@@ -132,10 +132,11 @@ service firebase.storage {
 
 ## Super admin: schools & admins
 
-- `/superadmin/schools` — create schools (`lib/schools.ts`, `schools` collection: `name`, `place`, `adminName`, `createdAt`) and see them listed live.
+- `/superadmin/schools` — create schools (`lib/schools.ts`, `schools` collection: `name`, `place`, `createdAt`) and see them listed live.
 - `/superadmin/admins` — create admin logins (`lib/admins.ts`) with name, email, password, phone, and an assigned school (dropdown of existing schools). This writes both a Firebase Auth account and a `users/{uid}` Firestore doc (`role: "admin"`, `schoolId`, `name`, `phone`).
 - Creating an admin uses a throwaway secondary Firebase app instance (`lib/secondaryAuth.ts`) so the super admin's own signed-in session isn't replaced by the new admin's — `createUserWithEmailAndPassword` normally signs in as whichever user it just created.
 - `/superadmin/dashboard` shows live counts and the 5 most recent schools/admins.
+- `/superadmin/profile` — shows the signed-in super admin's own basic details (name, email, phone).
 
 ## Admin: faculty
 

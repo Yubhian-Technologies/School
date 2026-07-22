@@ -1,0 +1,78 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function myProfile() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && myProfile().role == 'superadmin';
+    }
+
+    function isAdminOfSchool(schoolId) {
+      return isSignedIn() && myProfile().role == 'admin' && myProfile().schoolId == schoolId;
+    }
+
+    function inSameSchool(schoolId) {
+      return isSignedIn() && myProfile().schoolId == schoolId;
+    }
+
+    function isGuardianOfStudent(schoolId, studentId) {
+      return isSignedIn() && myProfile().role == 'parent' && myProfile().schoolId == schoolId &&
+        request.auth.uid in firestore.get(/databases/(default)/documents/students/$(studentId)).data.guardianUids;
+    }
+
+    function isReasonableUpload() {
+      return request.resource.size < 10 * 1024 * 1024;
+    }
+
+    // Student photos + documents (Aadhaar, birth cert, medical cert, etc.)
+    match /schools/{schoolId}/students/{studentId}/{allPaths=**} {
+      allow read: if isSuperAdmin() || isAdminOfSchool(schoolId) || inSameSchool(schoolId) ||
+        isGuardianOfStudent(schoolId, studentId);
+
+      allow write: if isReasonableUpload() && (
+        isAdminOfSchool(schoolId) || isGuardianOfStudent(schoolId, studentId)
+      );
+    }
+
+    // Faculty photos
+    match /schools/{schoolId}/faculty/{uid}/{allPaths=**} {
+      allow read: if isSuperAdmin() || inSameSchool(schoolId);
+      allow write: if isReasonableUpload() && (isAdminOfSchool(schoolId) || request.auth.uid == uid);
+    }
+
+    // Circulars (image/PDF) and timetable Excel uploads — admin authored, school-wide read
+    match /schools/{schoolId}/circulars/{allPaths=**} {
+      allow read: if isSuperAdmin() || inSameSchool(schoolId);
+      allow write: if isReasonableUpload() && isAdminOfSchool(schoolId);
+    }
+
+    match /schools/{schoolId}/timetables/{allPaths=**} {
+      allow read: if isSuperAdmin() || inSameSchool(schoolId);
+      allow write: if isReasonableUpload() && isAdminOfSchool(schoolId);
+    }
+
+    // Assignment/achievement attachments — faculty-authored, school-wide read within tenant
+    match /schools/{schoolId}/assignments/{allPaths=**} {
+      allow read: if isSuperAdmin() || inSameSchool(schoolId);
+      allow write: if isReasonableUpload() && (isAdminOfSchool(schoolId) || myProfile().role == 'faculty');
+    }
+
+    match /schools/{schoolId}/achievements/{allPaths=**} {
+      allow read: if isSuperAdmin() || inSameSchool(schoolId);
+      allow write: if isReasonableUpload() && (isAdminOfSchool(schoolId) || myProfile().role == 'faculty');
+    }
+
+    // Deny everything else by default.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
