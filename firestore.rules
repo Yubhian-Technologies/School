@@ -1,0 +1,396 @@
+rules_version = '2';
+
+// =============================================================================
+// EXTENDING THIS FILE
+//
+// Goal: adding a new collection should never require editing an existing
+// match block. Two registries below cover the two repeating shapes in this
+// schema — extend those in place of writing new blocks when the shape fits:
+//
+//   1. SCHOOL_SCOPED_ADMIN_COLLECTIONS — read: any signed-in user of the same
+//      school; write: admin of that school only. (e.g. circulars, events,
+//      activities, transportBuses, feeStructures, classSections,
+//      facultyAssignments.) To add one: append its name to the list in
+//      isSchoolScopedAdminCollection() below. Nothing else changes.
+//
+//   2. PARENT_REVIEWED_REQUEST_COLLECTIONS — parent creates a doc scoped by
+//      (schoolId, classSectionId, studentId, parentUid, status: 'pending');
+//      Class Teacher or Admin reviews (update/delete); parent can read their
+//      own. (e.g. parentRequests, leaveRequests.) To add one: append its name
+//      to isParentReviewedRequestCollection() below.
+//
+// If a new collection's permissions don't fit either shape, add a brand-new
+// `match /<name>/{id} { ... }` block using the helper functions in the
+// Helpers section — do not modify an existing block to shoehorn in new logic.
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function myProfile() {
+      return userDoc(request.auth.uid).data;
+    }
+
+    function myRole() {
+      return myProfile().role;
+    }
+
+    function mySchool() {
+      return myProfile().schoolId;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && myRole() == 'superadmin';
+    }
+
+    function isAdmin() {
+      return isSignedIn() && myRole() == 'admin';
+    }
+
+    function isAdminOfSchool(schoolId) {
+      return isAdmin() && mySchool() == schoolId;
+    }
+
+    function isFaculty() {
+      return isSignedIn() && myRole() == 'faculty';
+    }
+
+    function isFacultyOfSchool(schoolId) {
+      return isFaculty() && mySchool() == schoolId;
+    }
+
+    function isParent() {
+      return isSignedIn() && myRole() == 'parent';
+    }
+
+    function isParentOfSchool(schoolId) {
+      return isParent() && mySchool() == schoolId;
+    }
+
+    function inSameSchool(schoolId) {
+      return isSignedIn() && mySchool() == schoolId;
+    }
+
+    function facultyDoc(uid) {
+      return get(/databases/$(database)/documents/faculty/$(uid));
+    }
+
+    function classRoleOf(uid, classSectionId) {
+      return facultyDoc(uid).data.classSectionRoles[classSectionId];
+    }
+
+    function isClassTeacherOf(classSectionId) {
+      return isFaculty() && classRoleOf(request.auth.uid, classSectionId) == 'CLASS_TEACHER';
+    }
+
+    function isAnyTeacherOf(classSectionId) {
+      return isFaculty() && classRoleOf(request.auth.uid, classSectionId) in ['CLASS_TEACHER', 'SUBJECT_TEACHER'];
+    }
+
+    function studentDoc(studentId) {
+      return get(/databases/$(database)/documents/students/$(studentId));
+    }
+
+    function isGuardianOf(studentId) {
+      return isParent() && request.auth.uid in studentDoc(studentId).data.guardianUids;
+    }
+
+    function isParentLinkedToClass(classSectionId) {
+      return isParent() &&
+        exists(/databases/$(database)/documents/parentClassLinks/$(request.auth.uid + '_' + classSectionId));
+    }
+
+    // -----------------------------------------------------------------------
+    // Extensible registries — see "EXTENDING THIS FILE" note at the top.
+    // -----------------------------------------------------------------------
+
+    function isSchoolScopedAdminCollection(name) {
+      return name in [
+        'circulars', 'events', 'activities', 'transportBuses',
+        'feeStructures', 'classSections', 'facultyAssignments'
+      ];
+    }
+
+    function isParentReviewedRequestCollection(name) {
+      return name in ['parentRequests', 'leaveRequests'];
+    }
+
+    // Bucket 1: same-school read, admin-of-school write. New members: add the
+    // collection name to isSchoolScopedAdminCollection() above, nothing else.
+    match /{collection}/{id} {
+      allow read: if isSchoolScopedAdminCollection(collection) && inSameSchool(resource.data.schoolId);
+      allow create, update, delete: if isSchoolScopedAdminCollection(collection) &&
+        isAdminOfSchool(request.resource.data.schoolId);
+    }
+
+    // Bucket 2: parent-submitted, Class-Teacher/Admin-reviewed requests. New
+    // members: add the collection name to isParentReviewedRequestCollection().
+    match /{collection}/{id} {
+      allow read: if isParentReviewedRequestCollection(collection) && (
+        isAdminOfSchool(resource.data.schoolId) ||
+        isClassTeacherOf(resource.data.classSectionId) ||
+        request.auth.uid == resource.data.parentUid
+      );
+
+      allow create: if isParentReviewedRequestCollection(collection) &&
+        isGuardianOf(request.resource.data.studentId) &&
+        request.resource.data.parentUid == request.auth.uid &&
+        request.resource.data.status == 'pending';
+
+      allow update: if isParentReviewedRequestCollection(collection) && (
+        isAdminOfSchool(resource.data.schoolId) ||
+        isClassTeacherOf(resource.data.classSectionId)
+      );
+
+      allow delete: if isParentReviewedRequestCollection(collection) && isAdminOfSchool(resource.data.schoolId);
+    }
+
+    // -----------------------------------------------------------------------
+    // users/{uid} — the trust anchor read by every login. Self-get must always
+    // succeed for every role, since it's the very first Firestore call after
+    // signInWithEmailAndPassword.
+    // -----------------------------------------------------------------------
+
+    match /users/{uid} {
+      allow get: if isSignedIn() && (
+        request.auth.uid == uid ||
+        isSuperAdmin() ||
+        (isAdmin() && resource.data.schoolId == mySchool())
+      );
+
+      allow list: if isSuperAdmin() ||
+        (isAdmin() && resource.data.schoolId == mySchool());
+
+      allow create: if
+        (isSuperAdmin() && request.resource.data.role == 'admin') ||
+        (isAdmin() &&
+          request.resource.data.role in ['faculty', 'parent'] &&
+          request.resource.data.schoolId == mySchool());
+
+      allow update: if
+        (request.auth.uid == uid &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.schoolId == resource.data.schoolId &&
+          request.resource.data.status == resource.data.status) ||
+        isSuperAdmin() ||
+        (isAdmin() && resource.data.schoolId == mySchool() &&
+          request.resource.data.schoolId == resource.data.schoolId &&
+          request.resource.data.role == resource.data.role);
+
+      allow delete: if isSuperAdmin() ||
+        (isAdmin() && resource.data.schoolId == mySchool() && resource.data.role in ['faculty', 'parent']);
+    }
+
+    // -----------------------------------------------------------------------
+    // schools/{id}
+    // -----------------------------------------------------------------------
+
+    match /schools/{schoolId} {
+      allow read: if isSuperAdmin() || inSameSchool(schoolId);
+      allow create, update, delete: if isSuperAdmin();
+    }
+
+    // -----------------------------------------------------------------------
+    // faculty/{uid} — profile doc id == auth uid
+    // -----------------------------------------------------------------------
+
+    match /faculty/{uid} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == uid ||
+        isAdminOfSchool(resource.data.schoolId) ||
+        inSameSchool(resource.data.schoolId) // any school user may view a faculty directory profile
+      );
+
+      allow create, delete: if isAdminOfSchool(request.resource.data.schoolId);
+
+      allow update: if
+        isAdminOfSchool(resource.data.schoolId) ||
+        (request.auth.uid == uid &&
+          request.resource.data.schoolId == resource.data.schoolId &&
+          request.resource.data.classSectionRoles == resource.data.classSectionRoles);
+    }
+
+    // facultyAssignments/{id} and classSections/{id} are handled by the
+    // isSchoolScopedAdminCollection() bucket above.
+
+    match /parentClassLinks/{id} {
+      allow read: if isAdminOfSchool(resource.data.schoolId) || request.auth.uid == resource.data.parentUid;
+      allow write: if isAdminOfSchool(request.resource.data.schoolId) || isClassTeacherOf(request.resource.data.classSectionId);
+    }
+
+    // -----------------------------------------------------------------------
+    // students/{id}
+    // -----------------------------------------------------------------------
+
+    match /students/{studentId} {
+      allow get: if isAdminOfSchool(resource.data.schoolId) ||
+        isAnyTeacherOf(resource.data.classSectionId) ||
+        (request.auth.uid in resource.data.guardianUids);
+
+      allow list: if isAdminOfSchool(resource.data.schoolId) ||
+        isAnyTeacherOf(resource.data.classSectionId) ||
+        (request.auth.uid in resource.data.guardianUids);
+
+      allow create: if isAdminOfSchool(request.resource.data.schoolId) ||
+        isClassTeacherOf(request.resource.data.classSectionId);
+
+      allow update: if isAdminOfSchool(resource.data.schoolId) ||
+        isClassTeacherOf(resource.data.classSectionId);
+
+      allow delete: if isAdminOfSchool(resource.data.schoolId);
+    }
+
+    // -----------------------------------------------------------------------
+    // attendance/{studentId_date}
+    // -----------------------------------------------------------------------
+
+    match /attendance/{id} {
+      allow read: if isAdminOfSchool(resource.data.schoolId) ||
+        isAnyTeacherOf(resource.data.classSectionId) ||
+        isGuardianOf(resource.data.studentId);
+
+      allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId) ||
+        isClassTeacherOf(request.resource.data.classSectionId);
+    }
+
+    // -----------------------------------------------------------------------
+    // assignments/{id} — Class Teacher and Subject Teacher can both write
+    // -----------------------------------------------------------------------
+
+    match /assignments/{id} {
+      allow read: if isAdminOfSchool(resource.data.schoolId) ||
+        isAnyTeacherOf(resource.data.classSectionId) ||
+        isParentLinkedToClass(resource.data.classSectionId);
+
+      allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId) ||
+        isAnyTeacherOf(request.resource.data.classSectionId);
+    }
+
+    // -----------------------------------------------------------------------
+    // achievements/{id} — Class Teacher only, student-scoped
+    // -----------------------------------------------------------------------
+
+    match /achievements/{id} {
+      allow read: if isAdminOfSchool(resource.data.schoolId) ||
+        isAnyTeacherOf(resource.data.classSectionId) ||
+        isGuardianOf(resource.data.studentId);
+
+      allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId) ||
+        isClassTeacherOf(request.resource.data.classSectionId);
+    }
+
+    // -----------------------------------------------------------------------
+    // assessments/{id} — Subject Teacher only
+    // -----------------------------------------------------------------------
+
+    match /assessments/{id} {
+      allow read: if isAdminOfSchool(resource.data.schoolId) ||
+        isAnyTeacherOf(resource.data.classSectionId) ||
+        isGuardianOf(resource.data.studentId);
+
+      allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId) ||
+        isAnyTeacherOf(request.resource.data.classSectionId);
+    }
+
+    // parentRequests/{id} and leaveRequests/{id} are handled by the
+    // isParentReviewedRequestCollection() bucket above.
+
+    // -----------------------------------------------------------------------
+    // conversations/{id} + messages subcollection — Class Teacher <-> Parent only
+    // -----------------------------------------------------------------------
+
+    match /conversations/{id} {
+      allow read: if isAdminOfSchool(resource.data.schoolId) ||
+        request.auth.uid in resource.data.participantUids;
+
+      allow create: if request.auth.uid in request.resource.data.participantUids &&
+        (isClassTeacherOf(request.resource.data.classSectionId) || isGuardianOf(request.resource.data.studentId));
+
+      allow update: if isAdminOfSchool(resource.data.schoolId) ||
+        request.auth.uid in resource.data.participantUids;
+
+      allow delete: if isAdminOfSchool(resource.data.schoolId);
+
+      match /messages/{messageId} {
+        allow read: if isAdminOfSchool(get(/databases/$(database)/documents/conversations/$(id)).data.schoolId) ||
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(id)).data.participantUids;
+
+        allow create: if request.auth.uid in get(/databases/$(database)/documents/conversations/$(id)).data.participantUids &&
+          request.resource.data.senderUid == request.auth.uid;
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // announcements/{id} — Class Teacher writes, class's linked parents read
+    // -----------------------------------------------------------------------
+
+    match /announcements/{id} {
+      allow read: if isAdminOfSchool(resource.data.schoolId) ||
+        isClassTeacherOf(resource.data.classSectionId) ||
+        isParentLinkedToClass(resource.data.classSectionId);
+
+      allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId) ||
+        isClassTeacherOf(request.resource.data.classSectionId);
+    }
+
+    // circulars/{id}, events/{id}, activities/{id} and transportBuses/{id} are
+    // handled by the isSchoolScopedAdminCollection() bucket above.
+
+    // -----------------------------------------------------------------------
+    // timetables/{classSectionId} — scoped to that class's faculty + parents
+    // -----------------------------------------------------------------------
+
+    match /timetables/{classSectionId} {
+      allow read: if isAdminOfSchool(resource.data.schoolId) ||
+        isAnyTeacherOf(classSectionId) ||
+        isParentLinkedToClass(classSectionId);
+
+      allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId);
+    }
+
+    // feeStructures/{id} is handled by the isSchoolScopedAdminCollection()
+    // bucket above (unlike studentFees below, the class-level fee schedule
+    // isn't sensitive per-student data).
+
+    // -----------------------------------------------------------------------
+    // studentFees/{studentId} — sensitive, admin write, guardian-only read
+    // -----------------------------------------------------------------------
+
+    match /studentFees/{studentId} {
+      allow read: if isAdminOfSchool(resource.data.schoolId) || isGuardianOf(studentId);
+      allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId);
+    }
+
+    // -----------------------------------------------------------------------
+    // documents/{id} — parent uploads own child's docs, admin verifies,
+    // class teacher views only
+    // -----------------------------------------------------------------------
+
+    match /documents/{id} {
+      allow read: if isAdminOfSchool(resource.data.schoolId) ||
+        isClassTeacherOf(get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.classSectionId) ||
+        request.auth.uid == resource.data.uploadedByUid;
+
+      allow create: if isGuardianOf(request.resource.data.studentId) &&
+        request.resource.data.uploadedByUid == request.auth.uid &&
+        request.resource.data.verificationStatus == 'pending';
+
+      allow update: if isAdminOfSchool(resource.data.schoolId);
+
+      allow delete: if isAdminOfSchool(resource.data.schoolId) ||
+        request.auth.uid == resource.data.uploadedByUid;
+    }
+  }
+}
