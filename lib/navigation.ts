@@ -7,8 +7,7 @@ export const SUPERADMIN_NAV: NavItem[] = [
   { label: "Dashboard", href: "/superadmin/dashboard" },
   { label: "Schools", href: "/superadmin/schools" },
   { label: "Admins", href: "/superadmin/admins" },
-  { label: "Billing", href: "/superadmin/billing" },
-  { label: "Settings", href: "/superadmin/settings" },
+  { label: "Profile", href: "/superadmin/profile" },
 ];
 
 export const ADMIN_NAV: NavItem[] = [

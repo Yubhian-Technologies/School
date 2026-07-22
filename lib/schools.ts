@@ -13,7 +13,6 @@ import type { School } from "./types";
 export interface CreateSchoolInput {
   name: string;
   place: string;
-  adminName: string;
 }
 
 export async function createSchool(input: CreateSchoolInput) {
@@ -30,14 +29,12 @@ export function subscribeToSchools(callback: (schools: School[]) => void) {
       const data = docSnap.data() as {
         name: string;
         place: string;
-        adminName: string;
         createdAt: Timestamp | null;
       };
       return {
         id: docSnap.id,
         name: data.name,
         place: data.place,
-        adminName: data.adminName,
         createdAt: data.createdAt ? data.createdAt.toMillis() : null,
       };
     });

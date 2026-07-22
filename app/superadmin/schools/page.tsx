@@ -14,7 +14,6 @@ export default function SuperAdminSchoolsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState("");
   const [place, setPlace] = useState("");
-  const [adminName, setAdminName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -23,7 +22,6 @@ export default function SuperAdminSchoolsPage() {
   function resetForm() {
     setName("");
     setPlace("");
-    setAdminName("");
     setError(null);
   }
 
@@ -33,7 +31,7 @@ export default function SuperAdminSchoolsPage() {
     setSubmitting(true);
 
     try {
-      await createSchool({ name, place, adminName });
+      await createSchool({ name, place });
       resetForm();
       setModalOpen(false);
     } catch {
@@ -68,7 +66,6 @@ export default function SuperAdminSchoolsPage() {
               <tr>
                 <th className="px-4 py-3">School</th>
                 <th className="px-4 py-3">Place</th>
-                <th className="px-4 py-3">Admin</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -76,7 +73,6 @@ export default function SuperAdminSchoolsPage() {
                 <tr key={school.id}>
                   <td className="px-4 py-3 font-medium text-gray-900">{school.name}</td>
                   <td className="px-4 py-3 text-gray-600">{school.place}</td>
-                  <td className="px-4 py-3 text-gray-600">{school.adminName}</td>
                 </tr>
               ))}
             </tbody>
@@ -115,19 +111,6 @@ export default function SuperAdminSchoolsPage() {
                 required
                 value={place}
                 onChange={(e) => setPlace(e.target.value)}
-                className={inputClass}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="school-admin-name" className={labelClass}>
-                Admin name
-              </label>
-              <input
-                id="school-admin-name"
-                required
-                value={adminName}
-                onChange={(e) => setAdminName(e.target.value)}
                 className={inputClass}
               />
             </div>

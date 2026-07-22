@@ -14,6 +14,5 @@ export interface School {
   id: string;
   name: string;
   place: string;
-  adminName: string;
   createdAt: number | null;
 }
