@@ -25,15 +25,53 @@ service cloud.firestore {
     function callerRole() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
+    function callerSchoolId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.schoolId;
+    }
 
     match /users/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || callerRole() == 'superadmin');
-      allow write: if isSignedIn() && (request.auth.uid == uid || callerRole() == 'superadmin');
+
+      allow create: if isSignedIn() && (
+        request.auth.uid == uid ||
+        callerRole() == 'superadmin' ||
+        (callerRole() == 'admin' &&
+          request.resource.data.role == 'faculty' &&
+          request.resource.data.schoolId == callerSchoolId())
+      );
+
+      allow update: if isSignedIn() && (
+        request.auth.uid == uid ||
+        callerRole() == 'superadmin' ||
+        (callerRole() == 'admin' &&
+          resource.data.role == 'faculty' &&
+          resource.data.schoolId == callerSchoolId() &&
+          request.resource.data.role == 'faculty' &&
+          request.resource.data.schoolId == callerSchoolId())
+      );
+
+      allow delete: if isSignedIn() && (
+        request.auth.uid == uid ||
+        callerRole() == 'superadmin' ||
+        (callerRole() == 'admin' && resource.data.role == 'faculty' && resource.data.schoolId == callerSchoolId())
+      );
     }
 
     match /schools/{schoolId} {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && callerRole() == 'superadmin';
+    }
+
+    match /faculty/{uid} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == uid ||
+        callerRole() == 'superadmin' ||
+        (callerRole() == 'admin' && callerSchoolId() == resource.data.schoolId)
+      );
+      allow create: if isSignedIn() && callerRole() == 'admin' &&
+        callerSchoolId() == request.resource.data.schoolId;
+      allow update, delete: if isSignedIn() && callerRole() == 'admin' &&
+        callerSchoolId() == resource.data.schoolId;
     }
   }
 }
@@ -41,7 +79,25 @@ service cloud.firestore {
 
 - A signed-in user can always read/write their own `users/{uid}` doc (needed for login's role lookup).
 - A super admin can read/write any `users/{uid}` doc (needed to create admins and list them on `/superadmin/admins`).
+- A school admin can create/update/delete a `users/{uid}` doc **only** when its `role` is `faculty` and its `schoolId` matches the admin's own school — this is what lets `/admin/faculty` create a faculty login. An admin can't touch parent/admin/superadmin user docs or move a faculty doc to a different school.
 - Any signed-in user can read `schools`; only a super admin can create/edit them.
+- A faculty member can read their own `faculty/{uid}` doc; a school admin can read/write faculty docs for their own school; a super admin can read any.
+
+## Storage rules (faculty profile photos)
+
+Faculty photos upload to `faculty-photos/{uid}/{fileName}` in Firebase Storage, which also starts locked down. In **Firebase Console → Storage → Rules**, publish:
+
+```
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /faculty-photos/{uid}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}
+```
 
 ## How auth + routing works
 
@@ -57,6 +113,15 @@ service cloud.firestore {
 - `/superadmin/admins` — create admin logins (`lib/admins.ts`) with name, email, password, phone, and an assigned school (dropdown of existing schools). This writes both a Firebase Auth account and a `users/{uid}` Firestore doc (`role: "admin"`, `schoolId`, `name`, `phone`).
 - Creating an admin uses a throwaway secondary Firebase app instance (`lib/secondaryAuth.ts`) so the super admin's own signed-in session isn't replaced by the new admin's — `createUserWithEmailAndPassword` normally signs in as whichever user it just created.
 - `/superadmin/dashboard` shows live counts and the 5 most recent schools/admins.
+
+## Admin: faculty
+
+- `/admin/faculty` — add, edit, delete, and search faculty (`lib/faculty.ts`, `faculty` collection, one doc per faculty `uid`) for the signed-in admin's own school.
+- **Add Faculty** opens a form covering all faculty fields (profile photo, name, gender, DOB, mobile, email, password, qualification, subjects, designation, date of joining, experience, emergency contact, address, status). Faculty ID is auto-generated (`FAC0001`, `FAC0002`, ...) on save. Saving creates a Firebase Auth account (email/password) plus a `users/{uid}` doc (`role: "faculty"`) and a `faculty/{uid}` doc, using the same secondary-app pattern as admin creation.
+- **Edit** opens the same form pre-filled; email and password aren't editable from here (email is tied to the Auth account, password changes aren't exposed to admins via the client SDK).
+- **Delete** removes the `faculty/{uid}` and `users/{uid}` docs, which blocks that faculty member from logging in (their Firebase Auth account itself isn't deletable from the client SDK for a different user).
+- **Search Faculty** looks up by Faculty ID or Mobile Number and opens the full profile.
+- Profile photos upload to Firebase Storage at `faculty-photos/{uid}/{fileName}` — see the Storage rules above.
 
 ## Seeding the 4 sample users
 

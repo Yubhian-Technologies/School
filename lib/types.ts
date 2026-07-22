@@ -17,3 +17,26 @@ export interface School {
   adminName: string;
   createdAt: number | null;
 }
+
+export interface Faculty {
+  uid: string;
+  facultyId: string;
+  schoolId: string;
+  name: string;
+  gender: "Male" | "Female";
+  dob: string;
+  mobile: string;
+  email: string;
+  qualification: string;
+  subjects: string;
+  designation: string;
+  doj: string;
+  experience: string;
+  hasPriorExperience: "Yes" | "No";
+  previousSchool: string;
+  address: string;
+  emergencyContact: string;
+  photoURL: string | null;
+  status: "Active" | "Inactive";
+  createdAt: number | null;
+}

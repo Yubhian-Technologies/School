@@ -7,7 +7,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { createAuthUserWithoutSignIn } from "./secondaryAuth";
+import { createAuthUserAndRun } from "./secondaryAuth";
 import type { UserProfile } from "./types";
 
 export interface CreateAdminInput {
@@ -19,19 +19,19 @@ export interface CreateAdminInput {
 }
 
 export async function createAdmin(input: CreateAdminInput) {
-  const uid = await createAuthUserWithoutSignIn(input.email, input.password);
+  return createAuthUserAndRun(input.email, input.password, async (uid) => {
+    await setDoc(doc(db, "users", uid), {
+      uid,
+      email: input.email,
+      role: "admin",
+      schoolId: input.schoolId,
+      status: "active",
+      name: input.name,
+      phone: input.phone,
+    });
 
-  await setDoc(doc(db, "users", uid), {
-    uid,
-    email: input.email,
-    role: "admin",
-    schoolId: input.schoolId,
-    status: "active",
-    name: input.name,
-    phone: input.phone,
+    return uid;
   });
-
-  return uid;
 }
 
 export function subscribeToAdmins(callback: (admins: UserProfile[]) => void) {
