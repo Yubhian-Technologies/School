@@ -18,6 +18,54 @@ export interface School {
 }
 
 // ---------------------------------------------------------------------------
+// Timetable (Admin grid-editor module — app/admin/timetable, lib/timetable*.ts)
+// NOTE: separate from the Timetable/TimetablePeriod spec below (Excel-upload
+// based, docs/context.md Tab 3) — these haven't been reconciled yet.
+// ---------------------------------------------------------------------------
+
+export type PeriodType = "period" | "break";
+
+export interface PeriodColumn {
+  id: string;
+  label: string;
+  startTime: string;
+  endTime: string;
+  type: PeriodType;
+}
+
+export interface TimetableConfig {
+  schoolId: string;
+  periods: PeriodColumn[];
+  updatedAt: number | null;
+}
+
+export interface TimetableSection {
+  id: string;
+  schoolId: string;
+  classId: string;
+  name: string;
+  createdAt: number | null;
+}
+
+export type DayOfWeek = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat";
+
+export interface GridCell {
+  text: string;
+  span: number;
+}
+
+export type GridRow = Record<string, GridCell>;
+
+export interface TimetableGrid {
+  id: string;
+  schoolId: string;
+  classId: string;
+  sectionId: string;
+  cells: Record<DayOfWeek, GridRow>;
+  updatedAt: number | null;
+}
+
+// ---------------------------------------------------------------------------
 // Faculty (Admin "Add Faculty" module — app/admin/faculty, lib/faculty.ts)
 // ---------------------------------------------------------------------------
 

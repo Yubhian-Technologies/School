@@ -55,14 +55,12 @@ export function subscribeToSchool(
     const data = snap.data() as {
       name: string;
       place: string;
-      adminName: string;
       createdAt: Timestamp | null;
     };
     callback({
       id: snap.id,
       name: data.name,
       place: data.place,
-      adminName: data.adminName,
       createdAt: data.createdAt ? data.createdAt.toMillis() : null,
     });
   });

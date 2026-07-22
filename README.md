@@ -73,6 +73,28 @@ service cloud.firestore {
       allow update, delete: if isSignedIn() && callerRole() == 'admin' &&
         callerSchoolId() == resource.data.schoolId;
     }
+
+    match /timetableConfigs/{schoolId} {
+      allow read: if isSignedIn() && callerSchoolId() == schoolId;
+      allow write: if isSignedIn() && callerSchoolId() == schoolId
+                   && (callerRole() == 'admin' || callerRole() == 'superadmin');
+    }
+
+    match /timetableSections/{sectionId} {
+      allow read: if isSignedIn() && callerSchoolId() == resource.data.schoolId;
+      allow create: if isSignedIn() && callerSchoolId() == request.resource.data.schoolId
+                    && (callerRole() == 'admin' || callerRole() == 'superadmin');
+      allow update, delete: if isSignedIn() && callerSchoolId() == resource.data.schoolId
+                    && (callerRole() == 'admin' || callerRole() == 'superadmin');
+    }
+
+    match /timetableGrids/{gridId} {
+      allow read: if isSignedIn() && callerSchoolId() == resource.data.schoolId;
+      allow create, update: if isSignedIn() && callerSchoolId() == request.resource.data.schoolId
+                    && (callerRole() == 'admin' || callerRole() == 'superadmin');
+      allow delete: if isSignedIn() && callerSchoolId() == resource.data.schoolId
+                    && (callerRole() == 'admin' || callerRole() == 'superadmin');
+    }
   }
 }
 ```
@@ -82,6 +104,7 @@ service cloud.firestore {
 - A school admin can create/update/delete a `users/{uid}` doc **only** when its `role` is `faculty` and its `schoolId` matches the admin's own school — this is what lets `/admin/faculty` create a faculty login. An admin can't touch parent/admin/superadmin user docs or move a faculty doc to a different school.
 - Any signed-in user can read `schools`; only a super admin can create/edit them.
 - A faculty member can read their own `faculty/{uid}` doc; a school admin can read/write faculty docs for their own school; a super admin can read any.
+- `timetableConfigs/{schoolId}` (the shared bell schedule), `timetableSections/{sectionId}`, and `timetableGrids/{sectionId}` are all readable by any signed-in user at the same school (so a future faculty/parent read-only view needs no rule changes) and writable only by an admin or superadmin at that school.
 
 ## Storage rules (faculty profile photos)
 

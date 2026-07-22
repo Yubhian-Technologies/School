@@ -170,7 +170,7 @@ export default function AdminFacultyPage() {
     setSubmitting(true);
     try {
       if (isEditing && editingUid) {
-        await updateFaculty(editingUid, {
+        await updateFaculty(editingUid, schoolId, {
           name: form.name,
           gender: form.gender,
           dob: form.dob,

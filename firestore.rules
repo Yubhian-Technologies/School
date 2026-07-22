@@ -360,6 +360,32 @@ service cloud.firestore {
       allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId);
     }
 
+    // -----------------------------------------------------------------------
+    // timetableConfigs/{schoolId}, timetableSections/{id}, timetableGrids/{id}
+    // — grid-editor Timetable module (app/admin/timetable, lib/timetable*.ts).
+    // NOT YET RECONCILED with timetables/{classSectionId} above (the
+    // Excel-upload design from docs/context.md Tab 3) — two parallel
+    // Timetable designs currently coexist; pick one before building any
+    // Faculty/Parent read view of timetable data.
+    // -----------------------------------------------------------------------
+
+    match /timetableConfigs/{schoolId} {
+      allow read: if inSameSchool(schoolId);
+      allow write: if isAdminOfSchool(schoolId);
+    }
+
+    match /timetableSections/{sectionId} {
+      allow read: if inSameSchool(resource.data.schoolId);
+      allow create: if isAdminOfSchool(request.resource.data.schoolId);
+      allow update, delete: if isAdminOfSchool(resource.data.schoolId);
+    }
+
+    match /timetableGrids/{gridId} {
+      allow read: if inSameSchool(resource.data.schoolId);
+      allow create, update: if isAdminOfSchool(request.resource.data.schoolId);
+      allow delete: if isAdminOfSchool(resource.data.schoolId);
+    }
+
     // feeStructures/{id} is handled by the isSchoolScopedAdminCollection()
     // bucket above (unlike studentFees below, the class-level fee schedule
     // isn't sensitive per-student data).

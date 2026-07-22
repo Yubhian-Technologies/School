@@ -48,8 +48,8 @@ async function nextFacultyId(schoolId: string) {
   return `FAC${String(snap.size + 1).padStart(4, "0")}`;
 }
 
-export async function uploadFacultyPhoto(uid: string, file: File) {
-  const photoRef = ref(storage, `faculty-photos/${uid}/${file.name}`);
+export async function uploadFacultyPhoto(schoolId: string, uid: string, file: File) {
+  const photoRef = ref(storage, `schools/${schoolId}/faculty/${uid}/${file.name}`);
   await uploadBytes(photoRef, file);
   return getDownloadURL(photoRef);
 }
@@ -57,7 +57,9 @@ export async function uploadFacultyPhoto(uid: string, file: File) {
 export async function createFaculty(input: CreateFacultyInput) {
   return createAuthUserAndRun(input.email, input.password, async (uid) => {
     const facultyId = await nextFacultyId(input.schoolId);
-    const photoURL = input.photo ? await uploadFacultyPhoto(uid, input.photo) : null;
+    const photoURL = input.photo
+      ? await uploadFacultyPhoto(input.schoolId, uid, input.photo)
+      : null;
 
     await setDoc(doc(db, "users", uid), {
       uid,
@@ -117,7 +119,7 @@ export function subscribeToFaculty(
   });
 }
 
-export async function updateFaculty(uid: string, input: UpdateFacultyInput) {
+export async function updateFaculty(uid: string, schoolId: string, input: UpdateFacultyInput) {
   const { photo, ...fields } = input;
   const updates: Record<string, unknown> = { ...fields };
 
@@ -126,7 +128,7 @@ export async function updateFaculty(uid: string, input: UpdateFacultyInput) {
   }
 
   if (photo) {
-    updates.photoURL = await uploadFacultyPhoto(uid, photo);
+    updates.photoURL = await uploadFacultyPhoto(schoolId, uid, photo);
   }
 
   await updateDoc(doc(db, "faculty", uid), updates);
