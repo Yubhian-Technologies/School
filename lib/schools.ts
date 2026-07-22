@@ -1,6 +1,7 @@
 import {
   collection,
   addDoc,
+  doc,
   onSnapshot,
   orderBy,
   query,
@@ -39,5 +40,30 @@ export function subscribeToSchools(callback: (schools: School[]) => void) {
       };
     });
     callback(schools);
+  });
+}
+
+export function subscribeToSchool(
+  schoolId: string,
+  callback: (school: School | null) => void
+) {
+  return onSnapshot(doc(db, "schools", schoolId), (snap) => {
+    if (!snap.exists()) {
+      callback(null);
+      return;
+    }
+    const data = snap.data() as {
+      name: string;
+      place: string;
+      adminName: string;
+      createdAt: Timestamp | null;
+    };
+    callback({
+      id: snap.id,
+      name: data.name,
+      place: data.place,
+      adminName: data.adminName,
+      createdAt: data.createdAt ? data.createdAt.toMillis() : null,
+    });
   });
 }
