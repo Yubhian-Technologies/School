@@ -12,6 +12,7 @@ export const SUPERADMIN_NAV: NavItem[] = [
 
 export const ADMIN_NAV: NavItem[] = [
   { label: "Dashboard", href: "/admin/dashboard" },
+  { label: "Classes", href: "/admin/classes" },
   { label: "Faculty", href: "/admin/faculty" },
   { label: "Transport", href: "/admin/transport" },
   { label: "Timetable", href: "/admin/timetable" },
