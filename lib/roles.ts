@@ -4,7 +4,7 @@ export const ROLE_HOME: Record<Role, string> = {
   superadmin: "/superadmin/dashboard",
   admin: "/admin/dashboard",
   faculty: "/faculty/dashboard",
-  parent: "/parent/dashboard",
+  parent: "/parent/profile",
 };
 
 export const ROLE_LABEL: Record<Role, string> = {

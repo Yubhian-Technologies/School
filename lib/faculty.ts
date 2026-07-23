@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "./firebase";
-import { createAuthUserAndRun } from "./secondaryAuth";
+import { createAuthUserAndRun, deleteAuthAccount } from "./secondaryAuth";
 import type { Faculty } from "./types";
 
 export interface CreateFacultyInput {
@@ -145,4 +145,5 @@ export async function updateFaculty(uid: string, schoolId: string, input: Update
 export async function deleteFaculty(uid: string) {
   await deleteDoc(doc(db, "faculty", uid));
   await deleteDoc(doc(db, "users", uid));
+  await deleteAuthAccount(uid);
 }
