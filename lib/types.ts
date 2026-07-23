@@ -39,14 +39,6 @@ export interface TimetableConfig {
   updatedAt: number | null;
 }
 
-export interface TimetableSection {
-  id: string;
-  schoolId: string;
-  classId: string;
-  name: string;
-  createdAt: number | null;
-}
-
 export type DayOfWeek = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat";
 
 export interface GridCell {
@@ -147,6 +139,22 @@ export interface ClassSection {
   classTeacherUid: string | null;
   /** Planned seats for this section — a capacity figure the Admin sets, not a live enrollment count. */
   studentIntake?: number;
+}
+
+export type SubjectType = "Theory" | "Practical" | "Activity";
+
+/** A subject offered for a class — shared across every section of that
+ * class (not section-specific), matching how a school's academic plan
+ * actually works: all of Class 5-A/B/C study the same subject list. */
+export interface Subject {
+  id: string;
+  schoolId: string;
+  className: string; // "Nursery" | "LKG" | "UKG" | "Class 1" ... "Class 10"
+  name: string;
+  code?: string;
+  type: SubjectType;
+  hoursPerWeek?: number;
+  createdAt: number | null;
 }
 
 /** parentClassLinks/{parentUid}_{classSectionId} — existence-only marker doc used by rules

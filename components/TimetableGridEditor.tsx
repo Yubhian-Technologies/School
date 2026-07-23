@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { getClassLabel } from "@/lib/classes";
+import { getClassSection } from "@/lib/classSections";
 import { subscribeToPeriods } from "@/lib/timetableConfig";
-import { getSection } from "@/lib/timetableSections";
 import { DAYS, emptyCells, saveGrid, subscribeToGrid } from "@/lib/timetableGrid";
-import type { DayOfWeek, GridRow, PeriodColumn, TimetableSection } from "@/lib/types";
+import type { ClassSection, DayOfWeek, GridRow, PeriodColumn } from "@/lib/types";
 
 interface Selection {
   day: DayOfWeek;
@@ -25,7 +25,7 @@ export default function TimetableGridEditor({
   const schoolId = profile?.schoolId ?? null;
   const classLabel = getClassLabel(classId);
 
-  const [section, setSection] = useState<TimetableSection | null>(null);
+  const [section, setSection] = useState<ClassSection | null>(null);
   const [periods, setPeriods] = useState<PeriodColumn[] | null>(null);
   const [cells, setCells] = useState<Record<DayOfWeek, GridRow> | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -38,7 +38,7 @@ export default function TimetableGridEditor({
   const awaitingSaveEchoRef = useRef(false);
 
   useEffect(() => {
-    getSection(sectionId).then(setSection);
+    getClassSection(sectionId).then(setSection);
   }, [sectionId]);
 
   useEffect(() => {
@@ -161,7 +161,7 @@ export default function TimetableGridEditor({
             ← {classLabel} sections
           </Link>
           <h1 className="mt-1 text-xl font-semibold tracking-tight text-gray-900">
-            {classLabel} · Section {section?.name ?? "…"}
+            {classLabel} · Section {section?.sectionName ?? "…"}
           </h1>
         </div>
         <div className="flex items-center gap-3">

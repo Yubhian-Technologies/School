@@ -3,6 +3,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   query,
@@ -125,6 +126,12 @@ export function subscribeToClassSections(
       .sort((a, b) => a.sectionName.localeCompare(b.sectionName));
     callback(sections);
   });
+}
+
+export async function getClassSection(sectionId: string): Promise<ClassSection | null> {
+  const snap = await getDoc(doc(db, "classSections", sectionId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...(snap.data() as Omit<ClassSection, "id">) };
 }
 
 export async function updateClassTeacher(
