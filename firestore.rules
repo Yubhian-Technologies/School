@@ -406,27 +406,37 @@ service cloud.firestore {
     }
 
     // -----------------------------------------------------------------------
-    // timetableConfigs/{schoolId}, timetableGrids/{id} — grid-editor Timetable
-    // module (app/admin/timetable, lib/timetable*.ts). Sections are shared
-    // with the rest of the app now (classSections/{id}, isSchoolScopedAdminCollection
-    // bucket above) — the module's own timetableSections collection was
-    // removed once Admin · Classes became the single place sections are
-    // created/deleted. The grid/period storage itself is STILL NOT
-    // RECONCILED with timetables/{classSectionId} above (the Excel-upload
-    // design from docs/context.md Tab 3) — two parallel Timetable designs
-    // coexist; pick one before building any Faculty/Parent read view of
-    // timetable data.
+    // timetableGrids/{id} — grid-editor Timetable module (app/admin/timetable,
+    // lib/timetable*.ts). Keyed by the real classSections/{id} doc id (see
+    // isSchoolScopedAdminCollection's 'classSections' entry above) — each
+    // class section owns exactly one independent timetable doc (its own
+    // days, periods, breaks, cells). Sections themselves are shared with the
+    // rest of the app (classSections/{id}) — the module's own
+    // timetableSections/timetableConfigs collections were removed once
+    // Admin · Classes became the single place sections are created/deleted.
+    // This is also read by Faculty (own sections + browsing) and Parent
+    // (linked student's section) — both read-only, only once a timetable is
+    // published.
+    // NOT YET RECONCILED with timetables/{classSectionId} above (the
+    // Excel-upload design from docs/context.md Tab 3) — two parallel
+    // Timetable designs currently coexist; pick one before building
+    // anything further on top of that one.
     // -----------------------------------------------------------------------
 
-    match /timetableConfigs/{schoolId} {
-      allow read: if inSameSchool(schoolId);
-      allow write: if isAdminOfSchool(schoolId);
-    }
-
+    // Drafts are admin-only; published timetables are readable by anyone in
+    // the same school (Faculty/Parent timetable pages read this directly).
+    // A section with no timetable yet has no document at all — `resource` is
+    // null in that case, so the "not created yet" check must come first (any
+    // signed-in user may learn that nothing exists there; no data is
+    // exposed) before touching resource.data, or the missing-doc read errors
+    // out as permission-denied instead of returning "not found".
     match /timetableGrids/{gridId} {
-      allow read: if inSameSchool(resource.data.schoolId);
+      allow read: if (resource == null && isSignedIn()) || (resource != null && (
+        isAdminOfSchool(resource.data.schoolId) ||
+        (inSameSchool(resource.data.schoolId) && resource.data.status == 'published')
+      ));
       allow create, update: if isAdminOfSchool(request.resource.data.schoolId);
-      allow delete: if isAdminOfSchool(resource.data.schoolId);
+      allow delete: if resource == null || isAdminOfSchool(resource.data.schoolId);
     }
 
     // feeStructures/{id} is handled by the isSchoolScopedAdminCollection()
