@@ -3,6 +3,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   query,
@@ -139,8 +140,18 @@ export async function updateClassTeacher(
   await updateDoc(doc(db, "classSections", sectionId), { classTeacherUid });
 }
 
+export async function getClassSection(sectionId: string): Promise<ClassSection | null> {
+  const snap = await getDoc(doc(db, "classSections", sectionId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...(snap.data() as Omit<ClassSection, "id">) };
+}
+
 export async function deleteClassSection(sectionId: string) {
   await deleteDoc(doc(db, "classSections", sectionId));
+  // The section's timetable doc may never have been created — a security-
+  // rule check against a nonexistent doc's resource.data would otherwise
+  // error out, so this cleanup is best-effort.
+  await deleteDoc(doc(db, "timetableGrids", sectionId)).catch(() => {});
 }
 
 /** A faculty member can be class teacher of at most one section at a time

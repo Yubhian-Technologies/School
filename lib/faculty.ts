@@ -55,6 +55,45 @@ export async function uploadFacultyPhoto(schoolId: string, uid: string, file: Fi
 }
 
 export async function createFaculty(input: CreateFacultyInput) {
+  try {
+    return await createAuthUserAndRunFaculty(input);
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code !== "auth/email-already-in-use") throw err;
+
+    // The Auth account for this email already exists — check whether it's a
+    // real duplicate (a users/ profile exists) or an orphaned account left
+    // over from an earlier failed attempt (Auth user created, but the
+    // Firestore writes never completed and rollback couldn't clean it up).
+    try {
+      const existingProfile = await getDocs(
+        query(
+          collection(db, "users"),
+          where("schoolId", "==", input.schoolId),
+          where("email", "==", input.email)
+        )
+      );
+      if (existingProfile.empty) {
+        throw Object.assign(
+          new Error(
+            `"${input.email}" has a leftover Firebase Authentication account from an earlier ` +
+              "failed attempt (no matching profile exists for it). Remove it in Firebase Console " +
+              "> Authentication, or use a different email."
+          ),
+          { code: "faculty/orphaned-auth-account" }
+        );
+      }
+    } catch (diagnosticErr) {
+      if ((diagnosticErr as { code?: string }).code === "faculty/orphaned-auth-account") {
+        throw diagnosticErr;
+      }
+      // The diagnostic lookup itself failed — fall through to the original error.
+    }
+    throw err;
+  }
+}
+
+async function createAuthUserAndRunFaculty(input: CreateFacultyInput) {
   return createAuthUserAndRun(input.email, input.password, async (uid) => {
     const facultyId = await nextFacultyId(input.schoolId);
     const photoURL = input.photo

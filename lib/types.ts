@@ -21,47 +21,72 @@ export interface School {
 // Timetable (Admin grid-editor module — app/admin/timetable, lib/timetable*.ts)
 // NOTE: separate from the Timetable/TimetablePeriod spec below (Excel-upload
 // based, docs/context.md Tab 3) — these haven't been reconciled yet.
+//
+// Every class section owns a fully independent timetable — no shared
+// school-wide config. Clicking "Create Timetable" instantly generates a
+// default structure (Mon-Sat columns, Period 1-8 rows, a Lunch Break after
+// Period 4) rather than asking the admin to build the grid by hand; Edit
+// Structure lets them customize it afterward. Stored one document per
+// section in the timetableGrids collection, keyed by the real
+// classSections/{id} doc id (see ClassSection below) — this is also what
+// Student.classSectionId, FacultyAssignment.classSectionId, and
+// classSectionRoles reference, so a timetable can always be found from
+// existing relationships without a separate mapping.
+//
+// Columns = working days, rows = periods (matches a real school timetable:
+// day names across the top, periods listed down the side). Breaks are a
+// separate list, not a row/period flag — each renders as a full-width banner
+// positioned right after a given period (or before Period 1).
 // ---------------------------------------------------------------------------
 
-export type PeriodType = "period" | "break";
+export type SectionTimetableStatus = "draft" | "published";
 
-export interface PeriodColumn {
+export interface TimetableDayDef {
   id: string;
   label: string;
-  startTime: string;
-  endTime: string;
-  type: PeriodType;
+  order: number;
 }
 
-export interface TimetableConfig {
-  schoolId: string;
-  periods: PeriodColumn[];
-  updatedAt: number | null;
-}
-
-export interface TimetableSection {
+export interface TimetablePeriodDef {
   id: string;
-  schoolId: string;
-  classId: string;
-  name: string;
-  createdAt: number | null;
+  label: string;
+  order: number;
 }
 
-export type DayOfWeek = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat";
-
-export interface GridCell {
-  text: string;
-  span: number;
-}
-
-export type GridRow = Record<string, GridCell>;
-
-export interface TimetableGrid {
+export interface TimetableBreakDef {
   id: string;
+  label: string;
+  durationMinutes: number;
+  // Renders immediately after this period; null = before Period 1.
+  afterPeriodId: string | null;
+}
+
+export interface TimetableCellData {
+  subject: string;
+  facultyId: string | null;
+  // Denormalized at write time so rendering the grid doesn't need a read per
+  // faculty reference.
+  facultyName: string | null;
+  room: string;
+  notes: string;
+  color: string | null;
+}
+
+export interface SectionTimetable {
+  id: string; // == sectionId
   schoolId: string;
   classId: string;
   sectionId: string;
-  cells: Record<DayOfWeek, GridRow>;
+  academicYear: string;
+  name: string;
+  effectiveDate: string;
+  status: SectionTimetableStatus;
+  days: TimetableDayDef[];
+  periods: TimetablePeriodDef[];
+  breaks: TimetableBreakDef[];
+  // Keyed by `${dayId}_${periodId}`.
+  cells: Record<string, TimetableCellData>;
+  createdAt: number | null;
   updatedAt: number | null;
 }
 
