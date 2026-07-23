@@ -125,10 +125,10 @@ service firebase.storage {
 ## How auth + routing works
 
 - `context/AuthContext.tsx` listens to Firebase Auth state and, once signed in, fetches the matching `users/{uid}` Firestore document for the role/schoolId.
-- `/login` signs in with email/password, looks up the role, and redirects to `/superadmin/dashboard`, `/admin/dashboard`, `/faculty/dashboard`, or `/parent/dashboard`.
+- `/login` signs in with email/password, looks up the role, and redirects via `ROLE_HOME` (`lib/roles.ts`) to `/superadmin/dashboard`, `/admin/dashboard`, `/faculty/dashboard`, or `/parent/profile`.
 - Each role's route group (`app/superadmin`, `app/admin`, `app/faculty`, `app/parent`) is wrapped by `components/RoleGuard.tsx`, a client-side guard: unauthenticated visitors are sent to `/login`; a signed-in user with the wrong role is sent to their own dashboard.
 - This is client-side route protection (no server session/middleware), which matches the scope of this shell — there's no server-rendered data yet that needs protecting.
-- Every dashboard has a working **Log out** button in the top bar (`components/LogoutButton.tsx`).
+- Every dashboard has a working **Log out** button in the sidebar's profile footer (`components/Sidebar.tsx`).
 
 ## Super admin: schools & admins
 

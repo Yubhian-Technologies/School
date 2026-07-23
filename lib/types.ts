@@ -145,6 +145,8 @@ export interface ClassSection {
   className: string; // "Nursery" | "LKG" | "UKG" | "Class 1" ... "Class 10"
   sectionName: string; // "A" | "B" | "C" ...
   classTeacherUid: string | null;
+  /** Planned seats for this section — a capacity figure the Admin sets, not a live enrollment count. */
+  studentIntake?: number;
 }
 
 /** parentClassLinks/{parentUid}_{classSectionId} — existence-only marker doc used by rules
@@ -190,6 +192,9 @@ export interface GuardianInfo {
   relation?: string;
   mobile?: string;
   address?: string;
+  aadhaarNo?: string;
+  email?: string;
+  occupation?: string;
 }
 
 export interface TransportInfo {
@@ -205,10 +210,16 @@ export interface Student {
   schoolId: string;
   classSectionId: string;
   academicYear: string;
+  /** Human-readable class/section text, denormalized from the classSections
+   * doc (lib/classSections.ts) at the time the class teacher was resolved —
+   * classSectionId is still the id that drives access rules/queries. */
+  className?: string;
+  sectionName?: string;
 
   photoUrl?: string;
   admissionNo: string;
   rollNo: string;
+  /** URL of an uploaded Digital ID document (photo or PDF), not a generated code. */
   digitalId?: string;
   name: string;
   admissionDate?: string;

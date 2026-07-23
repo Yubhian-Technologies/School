@@ -83,20 +83,25 @@ service cloud.firestore {
       return isSignedIn() && mySchool() == schoolId;
     }
 
-    function facultyDoc(uid) {
-      return get(/databases/$(database)/documents/faculty/$(uid));
+    function classSectionDoc(classSectionId) {
+      return get(/databases/$(database)/documents/classSections/$(classSectionId));
     }
 
-    function classRoleOf(uid, classSectionId) {
-      return facultyDoc(uid).data.classSectionRoles[classSectionId];
-    }
-
+    // classSections/{id}.classTeacherUid (set by Admin via the Classes &
+    // Sections module) is the real, populated source of class-teacher
+    // assignment. (An earlier design read a classSectionRoles map off the
+    // faculty doc instead — nothing ever wrote that field, so every check
+    // built on it silently denied every real faculty account. Removed.)
     function isClassTeacherOf(classSectionId) {
-      return isFaculty() && classRoleOf(request.auth.uid, classSectionId) == 'CLASS_TEACHER';
+      return isFaculty() && classSectionDoc(classSectionId).data.classTeacherUid == request.auth.uid;
     }
 
+    // Interim stand-in for "is this faculty a Subject Teacher of
+    // classSectionId": there's no real per-subject assignment data yet (see
+    // CLAUDE.md "known debts"), so any faculty of the same school as the
+    // class-section counts. Tighten once subject-teacher assignments exist.
     function isAnyTeacherOf(classSectionId) {
-      return isFaculty() && classRoleOf(request.auth.uid, classSectionId) in ['CLASS_TEACHER', 'SUBJECT_TEACHER'];
+      return isFaculty() && isFacultyOfSchool(classSectionDoc(classSectionId).data.schoolId);
     }
 
     function studentDoc(studentId) {
@@ -177,6 +182,16 @@ service cloud.firestore {
         (isSuperAdmin() && request.resource.data.role == 'admin') ||
         (isAdmin() &&
           request.resource.data.role in ['faculty', 'parent'] &&
+          request.resource.data.schoolId == mySchool()) ||
+        // A Class Teacher creates a parent login as part of Add Student.
+        // Not scoped to "is this faculty actually a class teacher somewhere"
+        // — that can't be checked here (no classSectionId on a users doc to
+        // resolve it from) — but the login is useless without a matching
+        // students/{id} write, which IS scoped to the real class teacher via
+        // isClassTeacherOf() below. Faculty can never create admin/faculty
+        // accounts this way, only parent ones.
+        (isFaculty() &&
+          request.resource.data.role == 'parent' &&
           request.resource.data.schoolId == mySchool());
 
       allow update: if
@@ -218,8 +233,7 @@ service cloud.firestore {
       allow update: if
         isAdminOfSchool(resource.data.schoolId) ||
         (request.auth.uid == uid &&
-          request.resource.data.schoolId == resource.data.schoolId &&
-          request.resource.data.classSectionRoles == resource.data.classSectionRoles);
+          request.resource.data.schoolId == resource.data.schoolId);
     }
 
     // facultyAssignments/{id} and classSections/{id} are handled by the
@@ -234,6 +248,12 @@ service cloud.firestore {
     // students/{id}
     // -----------------------------------------------------------------------
 
+    // Reads: any teacher of the class (Class or Subject Teacher, per
+    // isAnyTeacherOf's interim "any faculty of the school" definition above)
+    // or the student's own guardian. Writes (create/update/delete) are
+    // tighter — only the real, admin-assigned Class Teacher of that
+    // classSectionId, via isClassTeacherOf() — matching "only the Class
+    // Teacher can add/edit/delete their own students".
     match /students/{studentId} {
       allow get: if isAdminOfSchool(resource.data.schoolId) ||
         isAnyTeacherOf(resource.data.classSectionId) ||
@@ -249,7 +269,8 @@ service cloud.firestore {
       allow update: if isAdminOfSchool(resource.data.schoolId) ||
         isClassTeacherOf(resource.data.classSectionId);
 
-      allow delete: if isAdminOfSchool(resource.data.schoolId);
+      allow delete: if isAdminOfSchool(resource.data.schoolId) ||
+        isClassTeacherOf(resource.data.classSectionId);
     }
 
     // -----------------------------------------------------------------------

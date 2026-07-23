@@ -5,7 +5,7 @@ import {
   getAuth,
   signOut,
 } from "firebase/auth";
-import { firebaseConfig } from "./firebase";
+import { auth, firebaseConfig } from "./firebase";
 
 /**
  * Creates a Firebase Auth user on a throwaway secondary app instance (so the
@@ -37,5 +37,30 @@ export async function createAuthUserAndRun<T>(
     }
   } finally {
     await deleteApp(secondaryApp);
+  }
+}
+
+/**
+ * Deletes another user's Firebase Auth account (email + password) via the
+ * /api/delete-account server route — the client SDK can only delete
+ * auth.currentUser, not an arbitrary uid. Call this after deleting the
+ * corresponding Firestore doc, so a since-deleted faculty/parent's email
+ * can be reused instead of failing with auth/email-already-in-use forever.
+ */
+export async function deleteAuthAccount(uid: string) {
+  const idToken = await auth.currentUser?.getIdToken();
+  if (!idToken) {
+    throw new Error("Not signed in.");
+  }
+
+  const res = await fetch("/api/delete-account", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify({ uid }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}) as { error?: string });
+    throw new Error(body.error || "Could not delete the account.");
   }
 }

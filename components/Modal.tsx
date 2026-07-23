@@ -21,7 +21,7 @@ export default function Modal({
         className="absolute inset-0 cursor-default"
       />
       <div
-        className={`relative max-h-[90vh] w-full ${maxWidthClassName} overflow-y-auto rounded-xl border border-gray-200 bg-white p-6 shadow-lg`}
+        className={`relative max-h-[90vh] w-full ${maxWidthClassName} overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-lg`}
       >
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold tracking-tight text-gray-900">{title}</h2>

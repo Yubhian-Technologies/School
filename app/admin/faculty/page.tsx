@@ -228,6 +228,12 @@ export default function AdminFacultyPage() {
     try {
       await deleteFaculty(f.uid);
       if (viewFaculty?.uid === f.uid) setViewFaculty(null);
+    } catch (err) {
+      window.alert(
+        err instanceof Error
+          ? `Faculty record deleted, but: ${err.message}`
+          : "Could not fully delete this faculty member."
+      );
     } finally {
       setDeletingUid(null);
     }
