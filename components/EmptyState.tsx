@@ -1,3 +1,5 @@
+import PageHeader from "./PageHeader";
+
 export default function EmptyState({
   title,
   message = "No data yet — coming soon.",
@@ -6,9 +8,9 @@ export default function EmptyState({
   message?: string;
 }) {
   return (
-    <div>
-      <h1 className="text-xl font-semibold tracking-tight text-gray-900">{title}</h1>
-      <div className="mt-6 rounded-xl border border-gray-200 bg-white p-16 text-center shadow-sm">
+    <div className="space-y-8">
+      <PageHeader title={title} />
+      <div className="rounded-2xl border border-gray-200 bg-white p-16 text-center shadow-sm">
         <p className="text-sm text-gray-500">{message}</p>
       </div>
     </div>
