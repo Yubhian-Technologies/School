@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import ClassSectionsView from "@/components/ClassSectionsView";
+import TimetableClassSections from "@/components/TimetableClassSections";
 import { CLASS_LIST } from "@/lib/classes";
 
 export default async function ClassTimetablePage({
@@ -12,5 +12,5 @@ export default async function ClassTimetablePage({
     notFound();
   }
 
-  return <ClassSectionsView classId={classId} />;
+  return <TimetableClassSections classId={classId} />;
 }

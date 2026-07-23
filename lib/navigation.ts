@@ -85,7 +85,12 @@ export const ADMIN_NAV: NavGroup[] = [
 export const DEMO_CLASS_ID = "demo-class";
 
 export const FACULTY_NAV: NavGroup[] = [
-  { items: [{ label: "Dashboard", href: "/faculty/dashboard", icon: LayoutDashboard }] },
+  {
+    items: [
+      { label: "Dashboard", href: "/faculty/dashboard", icon: LayoutDashboard },
+      { label: "Timetable", href: "/faculty/timetable", icon: CalendarClock },
+    ],
+  },
   {
     label: "Class Teacher",
     items: [

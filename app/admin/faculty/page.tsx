@@ -213,7 +213,9 @@ export default function AdminFacultyPage() {
     } catch (err) {
       const code = (err as { code?: string }).code;
       setError(
-        code === "auth/email-already-in-use"
+        code === "faculty/orphaned-auth-account"
+          ? (err as Error).message
+          : code === "auth/email-already-in-use"
           ? "That email is already in use."
           : `Could not ${isEditing ? "update" : "save"} faculty. Please try again.`
       );

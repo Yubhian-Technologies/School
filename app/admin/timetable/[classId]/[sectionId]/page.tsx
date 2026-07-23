@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import TimetableGridEditor from "@/components/TimetableGridEditor";
+import SectionTimetablePage from "@/components/timetable/SectionTimetablePage";
 import { CLASS_LIST } from "@/lib/classes";
 
 export default async function TimetableGridPage({
@@ -12,5 +12,5 @@ export default async function TimetableGridPage({
     notFound();
   }
 
-  return <TimetableGridEditor classId={classId} sectionId={sectionId} />;
+  return <SectionTimetablePage classId={classId} sectionId={sectionId} />;
 }
