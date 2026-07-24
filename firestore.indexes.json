@@ -41,6 +41,14 @@
       ]
     },
     {
+      "collectionGroup": "attendanceSummaries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "classSectionId", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "assignments",
       "queryScope": "COLLECTION",
       "fields": [

@@ -288,6 +288,11 @@ export interface Student {
 
 export type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE" | "HALF_DAY" | "LEAVE";
 
+// Which half of the day the student was PRESENT for — only set when
+// status === "HALF_DAY". "MORNING" = present morning/absent afternoon,
+// "AFTERNOON" = absent morning/present afternoon.
+export type AttendanceSession = "MORNING" | "AFTERNOON";
+
 export interface AttendanceRecord {
   id: string; // `${studentId}_${date}`
   schoolId: string;
@@ -295,8 +300,31 @@ export interface AttendanceRecord {
   studentId: string;
   date: string; // YYYY-MM-DD
   status: AttendanceStatus;
+  session?: AttendanceSession;
   remark?: string;
   markedByUid: string;
+}
+
+// attendanceSummaries/{classSectionId}_{date} — one immutable doc per class
+// per calendar date, written atomically alongside that date's
+// attendance/{studentId}_{date} docs in a single writeBatch (see
+// lib/attendance.ts submitAttendance). Exists so the Dashboard/History can
+// answer "has today been taken?" and list past dates without reading every
+// student's individual record, and so firestore.rules has a single doc to
+// make immutable as the "one submission per class per day" lock. Never read
+// by parents — their own summary is computed client-side from their child's
+// own attendance/{id} docs only.
+export interface AttendanceSummary {
+  id: string; // `${classSectionId}_${date}`
+  schoolId: string;
+  classSectionId: string;
+  date: string; // YYYY-MM-DD
+  teacherUid: string;
+  submittedAt: number | null;
+  totalStudents: number;
+  presentCount: number;
+  absentCount: number;
+  halfDayCount: number;
 }
 
 // ---------------------------------------------------------------------------
