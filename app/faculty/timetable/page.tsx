@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { subscribeToClassSectionForTeacher } from "@/lib/classSections";
 import { CLASS_LIST } from "@/lib/classes";
 import type { ClassSection } from "@/lib/types";
+import MyFacultyTimetable from "@/components/timetable/MyFacultyTimetable";
 
 export default function FacultyTimetablePage() {
   const { profile } = useAuth();
@@ -36,6 +37,18 @@ export default function FacultyTimetablePage() {
             >
               {mySection.className} - {mySection.sectionName}
             </Link>
+          </div>
+        </div>
+      )}
+
+      {schoolId && profile?.uid && (
+        <div className="mt-6">
+          <h2 className="text-sm font-semibold text-gray-700">My Timetable</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Every period you&apos;re assigned to, across all classes, in time order.
+          </p>
+          <div className="mt-2">
+            <MyFacultyTimetable schoolId={schoolId} facultyUid={profile.uid} />
           </div>
         </div>
       )}

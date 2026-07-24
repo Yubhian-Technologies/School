@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { subscribeToSectionTimetable } from "@/lib/timetableGrid";
+import { subscribeToPublishedSectionTimetable } from "@/lib/timetableGrid";
 import type { SectionTimetable } from "@/lib/types";
 import TimetableGrid from "./TimetableGrid";
 import TimetableSkeleton from "./TimetableSkeleton";
 
 export default function PublishedTimetableView({
+  schoolId,
   sectionId,
   highlightFacultyId,
 }: {
+  schoolId: string | null | undefined;
   sectionId: string;
   /** Highlights this faculty's own periods — pass only from the Faculty timetable view. */
   highlightFacultyId?: string;
@@ -17,8 +19,9 @@ export default function PublishedTimetableView({
   const [timetable, setTimetable] = useState<SectionTimetable | null | undefined>(undefined);
 
   useEffect(() => {
-    return subscribeToSectionTimetable(sectionId, setTimetable);
-  }, [sectionId]);
+    if (!schoolId) return;
+    return subscribeToPublishedSectionTimetable(schoolId, sectionId, setTimetable);
+  }, [schoolId, sectionId]);
 
   if (timetable === undefined) {
     return <TimetableSkeleton />;

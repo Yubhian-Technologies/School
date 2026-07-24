@@ -31,7 +31,11 @@ export default function FacultySectionTimetablePage({
       <h1 className="mt-1 text-xl font-semibold tracking-tight text-gray-900">{classLabel}</h1>
 
       <div className="mt-6">
-        <PublishedTimetableView sectionId={sectionId} highlightFacultyId={profile?.uid} />
+        <PublishedTimetableView
+          schoolId={profile?.schoolId}
+          sectionId={sectionId}
+          highlightFacultyId={profile?.uid}
+        />
       </div>
     </div>
   );

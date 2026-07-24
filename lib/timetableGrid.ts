@@ -1,10 +1,14 @@
 import {
+  collection,
   deleteField,
   doc,
+  documentId,
   onSnapshot,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
   type Timestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
@@ -57,6 +61,8 @@ export async function createDefaultSectionTimetable(input: CreateDefaultSectionT
     id: crypto.randomUUID(),
     label: `Period ${i + 1}`,
     order: i,
+    startTime: null,
+    endTime: null,
   }));
 
   const breaks: TimetableBreakDef[] = [
@@ -86,6 +92,41 @@ export async function createDefaultSectionTimetable(input: CreateDefaultSectionT
   });
 }
 
+interface RawSectionTimetableDoc {
+  schoolId: string;
+  classId: string;
+  sectionId: string;
+  academicYear: string;
+  name: string;
+  effectiveDate: string;
+  status: SectionTimetableStatus;
+  days: TimetableDayDef[];
+  periods: TimetablePeriodDef[];
+  breaks: TimetableBreakDef[];
+  cells: Record<string, TimetableCellData>;
+  createdAt: Timestamp | null;
+  updatedAt: Timestamp | null;
+}
+
+function mapSectionTimetableDoc(id: string, data: RawSectionTimetableDoc): SectionTimetable {
+  return {
+    id,
+    schoolId: data.schoolId,
+    classId: data.classId,
+    sectionId: data.sectionId,
+    academicYear: data.academicYear,
+    name: data.name,
+    effectiveDate: data.effectiveDate,
+    status: data.status,
+    days: data.days ?? [],
+    periods: data.periods ?? [],
+    breaks: data.breaks ?? [],
+    cells: data.cells ?? {},
+    createdAt: data.createdAt ? data.createdAt.toMillis() : null,
+    updatedAt: data.updatedAt ? data.updatedAt.toMillis() : null,
+  };
+}
+
 export function subscribeToSectionTimetable(
   sectionId: string,
   callback: (timetable: SectionTimetable | null) => void
@@ -97,42 +138,71 @@ export function subscribeToSectionTimetable(
         callback(null);
         return;
       }
-      const data = snap.data() as {
-        schoolId: string;
-        classId: string;
-        sectionId: string;
-        academicYear: string;
-        name: string;
-        effectiveDate: string;
-        status: SectionTimetableStatus;
-        days: TimetableDayDef[];
-        periods: TimetablePeriodDef[];
-        breaks: TimetableBreakDef[];
-        cells: Record<string, TimetableCellData>;
-        createdAt: Timestamp | null;
-        updatedAt: Timestamp | null;
-      };
-      callback({
-        id: snap.id,
-        schoolId: data.schoolId,
-        classId: data.classId,
-        sectionId: data.sectionId,
-        academicYear: data.academicYear,
-        name: data.name,
-        effectiveDate: data.effectiveDate,
-        status: data.status,
-        days: data.days ?? [],
-        periods: data.periods ?? [],
-        breaks: data.breaks ?? [],
-        cells: data.cells ?? {},
-        createdAt: data.createdAt ? data.createdAt.toMillis() : null,
-        updatedAt: data.updatedAt ? data.updatedAt.toMillis() : null,
-      });
+      callback(mapSectionTimetableDoc(snap.id, snap.data() as RawSectionTimetableDoc));
     },
     // A still-draft timetable is a permission-denied read for anyone but its
     // school's admin — that's correct (drafts are admin-only), so it's
     // treated the same as "nothing to show" rather than a console error.
     () => callback(null)
+  );
+}
+
+// Read-only view for Faculty/Parent (used by PublishedTimetableView), as a
+// *query* rather than a direct doc() listener. A direct doc() listener on a
+// still-draft timetable gets a permission-denied error the instant it's
+// opened — and once a Firestore listener errors, the SDK tears it down for
+// good; it will NOT start receiving updates again just because the document
+// later becomes readable (e.g. the admin publishes it while this page is
+// still open). A query that filters on exactly the fields the security rule
+// needs never enters that error state to begin with: an unpublished/other-
+// school doc simply isn't in the result set, and once it starts matching
+// (school scoped + published) the listener picks it up like any other write.
+// `schoolId` has to be pinned by its own equality filter too, or Firestore
+// can't statically prove the rule for the query (same class of gotcha as
+// `assertAdmissionNoAvailable` in lib/students.ts).
+export function subscribeToPublishedSectionTimetable(
+  schoolId: string,
+  sectionId: string,
+  callback: (timetable: SectionTimetable | null) => void
+) {
+  const q = query(
+    collection(db, "timetableGrids"),
+    where("schoolId", "==", schoolId),
+    where(documentId(), "==", sectionId),
+    where("status", "==", "published")
+  );
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const docSnap = snapshot.docs[0];
+      callback(docSnap ? mapSectionTimetableDoc(docSnap.id, docSnap.data() as RawSectionTimetableDoc) : null);
+    },
+    () => callback(null)
+  );
+}
+
+// Every published timetable in the school, for building a faculty member's
+// personal cross-class schedule (which class/section they're in at any given
+// time) — the per-section grid view alone can't answer that. Statically
+// provable by the `timetableGrids` read rule since both `schoolId` and
+// `status` are pinned by equality filters here.
+export function subscribeToPublishedTimetablesForSchool(
+  schoolId: string,
+  callback: (timetables: SectionTimetable[]) => void
+) {
+  const q = query(
+    collection(db, "timetableGrids"),
+    where("schoolId", "==", schoolId),
+    where("status", "==", "published")
+  );
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      callback(
+        snapshot.docs.map((docSnap) => mapSectionTimetableDoc(docSnap.id, docSnap.data() as RawSectionTimetableDoc))
+      );
+    },
+    () => callback([])
   );
 }
 
