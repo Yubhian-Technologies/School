@@ -28,17 +28,24 @@ service firebase.storage {
         request.auth.uid in firestore.get(/databases/(default)/documents/students/$(studentId)).data.guardianUids;
     }
 
+    function isFacultyOfSchool(schoolId) {
+      return isSignedIn() && myProfile().role == 'faculty' && myProfile().schoolId == schoolId;
+    }
+
     function isReasonableUpload() {
       return request.resource.size < 10 * 1024 * 1024;
     }
 
-    // Student photos + documents (Aadhaar, birth cert, medical cert, etc.)
+    // Student photos + documents (Aadhaar, birth cert, medical cert, etc.).
+    // Faculty write access is needed so a Class Teacher can add/edit a
+    // student's photo and digital ID (firestore.rules already trusts any
+    // faculty of the school the same way, via isFacultyOfSchool/isAnyTeacherOf).
     match /schools/{schoolId}/students/{studentId}/{allPaths=**} {
       allow read: if isSuperAdmin() || isAdminOfSchool(schoolId) || inSameSchool(schoolId) ||
         isGuardianOfStudent(schoolId, studentId);
 
       allow write: if isReasonableUpload() && (
-        isAdminOfSchool(schoolId) || isGuardianOfStudent(schoolId, studentId)
+        isAdminOfSchool(schoolId) || isFacultyOfSchool(schoolId) || isGuardianOfStudent(schoolId, studentId)
       );
     }
 

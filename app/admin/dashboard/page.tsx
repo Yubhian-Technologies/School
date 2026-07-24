@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CalendarDays,
   Layers,
+  Library,
   Megaphone,
   Users,
   Wallet,
@@ -82,6 +83,13 @@ export default function AdminDashboardPage() {
           subtitle="Sections & class teacher assignment"
           href="/admin/classes"
           color="purple"
+        />
+        <DashboardCard
+          icon={Library}
+          title="Subjects"
+          subtitle="Subjects offered per class"
+          href="/admin/subjects"
+          color="amber"
         />
         <DashboardCard
           icon={Users}

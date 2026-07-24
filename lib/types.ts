@@ -153,10 +153,13 @@ export interface FacultyProfile {
 }
 
 export interface FacultyAssignment {
-  id: string;
+  id: string; // == `${classSectionId}_${subjectId}` for SUBJECT_TEACHER assignments
   schoolId: string;
   facultyUid: string;
+  facultyName?: string;
   classSectionId: string;
+  className?: string;
+  sectionName?: string;
   role: FacultyClassRole;
   subjectId?: string;
   subjectName?: string;
@@ -176,6 +179,22 @@ export interface ClassSection {
   classTeacherUid: string | null;
   /** Planned seats for this section — a capacity figure the Admin sets, not a live enrollment count. */
   studentIntake?: number;
+}
+
+export type SubjectType = "Theory" | "Practical" | "Activity";
+
+/** A subject offered for a class — shared across every section of that
+ * class (not section-specific), matching how a school's academic plan
+ * actually works: all of Class 5-A/B/C study the same subject list. */
+export interface Subject {
+  id: string;
+  schoolId: string;
+  className: string; // "Nursery" | "LKG" | "UKG" | "Class 1" ... "Class 10"
+  name: string;
+  code?: string;
+  type: SubjectType;
+  hoursPerWeek?: number;
+  createdAt: number | null;
 }
 
 /** parentClassLinks/{parentUid}_{classSectionId} — existence-only marker doc used by rules
@@ -332,18 +351,21 @@ export interface AttendanceSummary {
 // ---------------------------------------------------------------------------
 
 export interface Assignment {
-  id: string;
+  id: string; // == `${classSectionId}_${subjectId}_${date}` — one diary entry per class-section+subject+day
   schoolId: string;
   classSectionId: string;
-  subjectId?: string;
+  className?: string;
+  sectionName?: string;
+  subjectId: string;
   subjectName: string;
   facultyUid: string;
-  date: string;
+  date: string; // YYYY-MM-DD
   classwork?: string;
   homework?: string;
-  attachments?: string[];
+  attachmentUrl?: string;
+  attachmentName?: string;
   dueDate?: string;
-  createdAt: number | null;
+  updatedAt: number | null;
 }
 
 export interface Achievement {

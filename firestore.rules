@@ -104,6 +104,18 @@ service cloud.firestore {
       return isFaculty() && isFacultyOfSchool(classSectionDoc(classSectionId).data.schoolId);
     }
 
+    // Real per-subject assignment check, backed by an Admin-managed
+    // facultyAssignments/{classSectionId}_{subjectId} doc (see
+    // components/SubjectTeacherAssignments.tsx). Used to gate who may write
+    // an assignments/{id} diary entry — tighter than isAnyTeacherOf above.
+    function facultyAssignmentDoc(classSectionId, subjectId) {
+      return get(/databases/$(database)/documents/facultyAssignments/$(classSectionId + '_' + subjectId));
+    }
+
+    function isSubjectTeacherOf(classSectionId, subjectId) {
+      return isFaculty() && facultyAssignmentDoc(classSectionId, subjectId).data.facultyUid == request.auth.uid;
+    }
+
     function studentDoc(studentId) {
       return get(/databases/$(database)/documents/students/$(studentId));
     }
@@ -124,7 +136,7 @@ service cloud.firestore {
     function isSchoolScopedAdminCollection(name) {
       return name in [
         'circulars', 'events', 'activities', 'transportBuses',
-        'feeStructures', 'classSections', 'facultyAssignments'
+        'feeStructures', 'classSections', 'facultyAssignments', 'subjects'
       ];
     }
 
@@ -136,8 +148,14 @@ service cloud.firestore {
     // collection name to isSchoolScopedAdminCollection() above, nothing else.
     match /{collection}/{id} {
       allow read: if isSchoolScopedAdminCollection(collection) && inSameSchool(resource.data.schoolId);
-      allow create, update, delete: if isSchoolScopedAdminCollection(collection) &&
+      allow create, update: if isSchoolScopedAdminCollection(collection) &&
         isAdminOfSchool(request.resource.data.schoolId);
+      // delete has no request.resource (there's no new document state), so
+      // it must check the existing doc via resource.data, not
+      // request.resource.data — using request.resource.data here would
+      // always deny the delete. Same fix applied throughout this file.
+      allow delete: if isSchoolScopedAdminCollection(collection) &&
+        isAdminOfSchool(resource.data.schoolId);
     }
 
     // Bucket 2: parent-submitted, Class-Teacher/Admin-reviewed requests. New
@@ -228,7 +246,8 @@ service cloud.firestore {
         inSameSchool(resource.data.schoolId) // any school user may view a faculty directory profile
       );
 
-      allow create, delete: if isAdminOfSchool(request.resource.data.schoolId);
+      allow create: if isAdminOfSchool(request.resource.data.schoolId);
+      allow delete: if isAdminOfSchool(resource.data.schoolId);
 
       allow update: if
         isAdminOfSchool(resource.data.schoolId) ||
@@ -236,12 +255,19 @@ service cloud.firestore {
           request.resource.data.schoolId == resource.data.schoolId);
     }
 
-    // facultyAssignments/{id} and classSections/{id} are handled by the
-    // isSchoolScopedAdminCollection() bucket above.
+    // facultyAssignments/{id}, classSections/{id} and subjects/{id} are
+    // handled by the isSchoolScopedAdminCollection() bucket above.
 
     match /parentClassLinks/{id} {
-      allow read: if isAdminOfSchool(resource.data.schoolId) || request.auth.uid == resource.data.parentUid;
-      allow write: if isAdminOfSchool(request.resource.data.schoolId) || isClassTeacherOf(request.resource.data.classSectionId);
+      // resource is null for a doc that doesn't exist yet (e.g. a student
+      // created before this collection existed) — `resource.data` on that
+      // throws, not just evaluates false, so the null case must be handled
+      // before touching `.data` (same pattern as timetableGrids below).
+      // Existence alone reveals nothing, so any signed-in user may learn
+      // "no link here yet."
+      allow read: if resource == null || isAdminOfSchool(resource.data.schoolId) || request.auth.uid == resource.data.parentUid;
+      allow create, update: if isAdminOfSchool(request.resource.data.schoolId) || isClassTeacherOf(request.resource.data.classSectionId);
+      allow delete: if resource == null || isAdminOfSchool(resource.data.schoolId) || isClassTeacherOf(resource.data.classSectionId);
     }
 
     // -----------------------------------------------------------------------
@@ -338,7 +364,10 @@ service cloud.firestore {
     }
 
     // -----------------------------------------------------------------------
-    // assignments/{id} — Class Teacher and Subject Teacher can both write
+    // assignments/{id} — Classwork/Homework diary. Written by the specific
+    // Subject Teacher assigned to that class-section+subject (via
+    // facultyAssignments, see isSubjectTeacherOf above); read by any staff
+    // of the school plus the class's linked parents.
     // -----------------------------------------------------------------------
 
     match /assignments/{id} {
@@ -346,8 +375,11 @@ service cloud.firestore {
         isAnyTeacherOf(resource.data.classSectionId) ||
         isParentLinkedToClass(resource.data.classSectionId);
 
-      allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId) ||
-        isAnyTeacherOf(request.resource.data.classSectionId);
+      allow create, update: if isAdminOfSchool(request.resource.data.schoolId) ||
+        isSubjectTeacherOf(request.resource.data.classSectionId, request.resource.data.subjectId);
+
+      allow delete: if isAdminOfSchool(resource.data.schoolId) ||
+        isSubjectTeacherOf(resource.data.classSectionId, resource.data.subjectId);
     }
 
     // -----------------------------------------------------------------------
@@ -359,8 +391,11 @@ service cloud.firestore {
         isAnyTeacherOf(resource.data.classSectionId) ||
         isGuardianOf(resource.data.studentId);
 
-      allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId) ||
+      allow create, update: if isAdminOfSchool(request.resource.data.schoolId) ||
         isClassTeacherOf(request.resource.data.classSectionId);
+
+      allow delete: if isAdminOfSchool(resource.data.schoolId) ||
+        isClassTeacherOf(resource.data.classSectionId);
     }
 
     // -----------------------------------------------------------------------
@@ -372,8 +407,11 @@ service cloud.firestore {
         isAnyTeacherOf(resource.data.classSectionId) ||
         isGuardianOf(resource.data.studentId);
 
-      allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId) ||
+      allow create, update: if isAdminOfSchool(request.resource.data.schoolId) ||
         isAnyTeacherOf(request.resource.data.classSectionId);
+
+      allow delete: if isAdminOfSchool(resource.data.schoolId) ||
+        isAnyTeacherOf(resource.data.classSectionId);
     }
 
     // parentRequests/{id} and leaveRequests/{id} are handled by the
@@ -413,8 +451,11 @@ service cloud.firestore {
         isClassTeacherOf(resource.data.classSectionId) ||
         isParentLinkedToClass(resource.data.classSectionId);
 
-      allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId) ||
+      allow create, update: if isAdminOfSchool(request.resource.data.schoolId) ||
         isClassTeacherOf(request.resource.data.classSectionId);
+
+      allow delete: if isAdminOfSchool(resource.data.schoolId) ||
+        isClassTeacherOf(resource.data.classSectionId);
     }
 
     // circulars/{id}, events/{id}, activities/{id} and transportBuses/{id} are
@@ -429,7 +470,8 @@ service cloud.firestore {
         isAnyTeacherOf(classSectionId) ||
         isParentLinkedToClass(classSectionId);
 
-      allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId);
+      allow create, update: if isAdminOfSchool(request.resource.data.schoolId);
+      allow delete: if isAdminOfSchool(resource.data.schoolId);
     }
 
     // -----------------------------------------------------------------------
@@ -437,9 +479,13 @@ service cloud.firestore {
     // lib/timetable*.ts). Keyed by the real classSections/{id} doc id (see
     // isSchoolScopedAdminCollection's 'classSections' entry above) — each
     // class section owns exactly one independent timetable doc (its own
-    // days, periods, breaks, cells). This is also read by Faculty (own
-    // sections + browsing) and Parent (linked student's section) — both
-    // read-only, only once a timetable is published.
+    // days, periods, breaks, cells). Sections themselves are shared with the
+    // rest of the app (classSections/{id}) — the module's own
+    // timetableSections/timetableConfigs collections were removed once
+    // Admin · Classes became the single place sections are created/deleted.
+    // This is also read by Faculty (own sections + browsing) and Parent
+    // (linked student's section) — both read-only, only once a timetable is
+    // published.
     // NOT YET RECONCILED with timetables/{classSectionId} above (the
     // Excel-upload design from docs/context.md Tab 3) — two parallel
     // Timetable designs currently coexist; pick one before building
@@ -472,7 +518,8 @@ service cloud.firestore {
 
     match /studentFees/{studentId} {
       allow read: if isAdminOfSchool(resource.data.schoolId) || isGuardianOf(studentId);
-      allow create, update, delete: if isAdminOfSchool(request.resource.data.schoolId);
+      allow create, update: if isAdminOfSchool(request.resource.data.schoolId);
+      allow delete: if isAdminOfSchool(resource.data.schoolId);
     }
 
     // -----------------------------------------------------------------------

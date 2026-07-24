@@ -58,6 +58,7 @@ export const ADMIN_NAV: NavGroup[] = [
     label: "Academics",
     items: [
       { label: "Classes", href: "/admin/classes", icon: Layers },
+      { label: "Subjects", href: "/admin/subjects", icon: Library },
       { label: "Faculty", href: "/admin/faculty", icon: Users },
       { label: "Timetable", href: "/admin/timetable", icon: CalendarClock },
     ],
@@ -108,7 +109,7 @@ export const FACULTY_NAV: NavGroup[] = [
     label: "Subject Teacher",
     items: [
       { label: "Students", href: `/faculty/subject/${DEMO_CLASS_ID}/students`, icon: Library },
-      { label: "Assignments", href: `/faculty/subject/${DEMO_CLASS_ID}/assignments`, icon: FileText },
+      { label: "Assignments", href: "/faculty/subject/assignments", icon: FileText },
       { label: "Assessments", href: `/faculty/subject/${DEMO_CLASS_ID}/assessments`, icon: ClipboardCheck },
     ],
   },
