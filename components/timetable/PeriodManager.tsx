@@ -16,11 +16,16 @@ export function validatePeriods(periods: TimetablePeriodDef[]): string | null {
     if (seen.has(key)) return `Duplicate period name: "${period.label.trim()}".`;
     seen.add(key);
   }
+  for (const period of periods) {
+    if (period.startTime && period.endTime && period.startTime >= period.endTime) {
+      return `"${period.label.trim() || "A period"}" end time must be after its start time.`;
+    }
+  }
   return null;
 }
 
 function newPeriod(order: number): TimetablePeriodDef {
-  return { id: crypto.randomUUID(), label: "", order };
+  return { id: crypto.randomUUID(), label: "", order, startTime: null, endTime: null };
 }
 
 export default function PeriodManager({
@@ -82,42 +87,64 @@ export default function PeriodManager({
         {periods.map((period, index) => (
           <div
             key={period.id}
-            className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-lg border border-gray-200 p-2"
+            className="space-y-2 rounded-lg border border-gray-200 p-2"
           >
-            <input
-              value={period.label}
-              onChange={(e) => updatePeriod(period.id, "label", e.target.value)}
-              placeholder="e.g. Period 1"
-              className={inputClass}
-            />
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => movePeriod(index, -1)}
-                disabled={index === 0}
-                className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-                aria-label="Move up"
-              >
-                ▲
-              </button>
-              <button
-                type="button"
-                onClick={() => movePeriod(index, 1)}
-                disabled={index === periods.length - 1}
-                className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-                aria-label="Move down"
-              >
-                ▼
-              </button>
-              <button
-                type="button"
-                onClick={() => requestRemove(period)}
-                disabled={periods.length <= 1}
-                title={periods.length <= 1 ? "At least one period is required" : undefined}
-                className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Remove
-              </button>
+            <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+              <input
+                value={period.label}
+                onChange={(e) => updatePeriod(period.id, "label", e.target.value)}
+                placeholder="e.g. Period 1"
+                className={inputClass}
+              />
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => movePeriod(index, -1)}
+                  disabled={index === 0}
+                  className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                  aria-label="Move up"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  onClick={() => movePeriod(index, 1)}
+                  disabled={index === periods.length - 1}
+                  className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                  aria-label="Move down"
+                >
+                  ▼
+                </button>
+                <button
+                  type="button"
+                  onClick={() => requestRemove(period)}
+                  disabled={periods.length <= 1}
+                  title={periods.length <= 1 ? "At least one period is required" : undefined}
+                  className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex items-center gap-1.5 text-xs text-gray-500">
+                Start time
+                <input
+                  type="time"
+                  value={period.startTime ?? ""}
+                  onChange={(e) => updatePeriod(period.id, "startTime", e.target.value || null)}
+                  className={inputClass}
+                />
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-gray-500">
+                End time
+                <input
+                  type="time"
+                  value={period.endTime ?? ""}
+                  onChange={(e) => updatePeriod(period.id, "endTime", e.target.value || null)}
+                  className={inputClass}
+                />
+              </label>
             </div>
           </div>
         ))}

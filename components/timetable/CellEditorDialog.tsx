@@ -126,7 +126,7 @@ export default function CellEditorDialog({
 
         <div>
           <label className={labelClass}>Cell color (optional)</label>
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1 flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setForm((f) => ({ ...f, color: null }))}

@@ -51,6 +51,10 @@ export interface TimetablePeriodDef {
   id: string;
   label: string;
   order: number;
+  // "HH:mm" (24-hour), admin-entered per period — optional so existing
+  // periods created before this field existed still render fine.
+  startTime: string | null;
+  endTime: string | null;
 }
 
 export interface TimetableBreakDef {

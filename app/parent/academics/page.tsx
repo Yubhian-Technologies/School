@@ -31,7 +31,7 @@ export default function ParentAcademicsPage() {
             {student.name}
             {student.className && ` · ${student.className} - ${student.sectionName}`}
           </h2>
-          <PublishedTimetableView sectionId={student.classSectionId} />
+          <PublishedTimetableView schoolId={student.schoolId} sectionId={student.classSectionId} />
         </div>
       )}
     </div>
