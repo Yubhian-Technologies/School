@@ -9,6 +9,16 @@ import type {
   TimetablePeriodDef,
 } from "@/lib/types";
 
+function formatTime(value: string | null): string | null {
+  if (!value) return null;
+  const [hourStr, minuteStr] = value.split(":");
+  const hour = Number(hourStr);
+  if (Number.isNaN(hour)) return value;
+  const period = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:${minuteStr} ${period}`;
+}
+
 function BreakBanner({ brk, columns }: { brk: TimetableBreakDef; columns: number }) {
   return (
     <tr>
@@ -75,6 +85,11 @@ export default function TimetableGrid({
               <tr>
                 <td className="sticky left-0 z-10 border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-bold text-gray-800">
                   {period.label}
+                  {period.startTime && period.endTime && (
+                    <div className="text-[11px] font-normal text-gray-500">
+                      {formatTime(period.startTime)} – {formatTime(period.endTime)}
+                    </div>
+                  )}
                 </td>
                 {sortedDays.map((day) => {
                   const cell = cells[`${day.id}_${period.id}`];
