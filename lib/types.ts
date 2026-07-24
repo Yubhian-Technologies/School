@@ -153,10 +153,13 @@ export interface FacultyProfile {
 }
 
 export interface FacultyAssignment {
-  id: string;
+  id: string; // == `${classSectionId}_${subjectId}` for SUBJECT_TEACHER assignments
   schoolId: string;
   facultyUid: string;
+  facultyName?: string;
   classSectionId: string;
+  className?: string;
+  sectionName?: string;
   role: FacultyClassRole;
   subjectId?: string;
   subjectName?: string;
@@ -320,18 +323,21 @@ export interface AttendanceRecord {
 // ---------------------------------------------------------------------------
 
 export interface Assignment {
-  id: string;
+  id: string; // == `${classSectionId}_${subjectId}_${date}` — one diary entry per class-section+subject+day
   schoolId: string;
   classSectionId: string;
-  subjectId?: string;
+  className?: string;
+  sectionName?: string;
+  subjectId: string;
   subjectName: string;
   facultyUid: string;
-  date: string;
+  date: string; // YYYY-MM-DD
   classwork?: string;
   homework?: string;
-  attachments?: string[];
+  attachmentUrl?: string;
+  attachmentName?: string;
   dueDate?: string;
-  createdAt: number | null;
+  updatedAt: number | null;
 }
 
 export interface Achievement {

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import Modal from "@/components/Modal";
+import FacultySubjectAssignments from "@/components/FacultySubjectAssignments";
 import { useAuth } from "@/context/AuthContext";
 import {
   createFaculty,
@@ -71,6 +72,7 @@ export default function AdminFacultyPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [searchError, setSearchError] = useState<string | null>(null);
   const [viewFaculty, setViewFaculty] = useState<Faculty | null>(null);
+  const [subjectsFaculty, setSubjectsFaculty] = useState<Faculty | null>(null);
 
   useEffect(() => {
     if (!schoolId) return;
@@ -332,6 +334,12 @@ export default function AdminFacultyPage() {
                         className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
                       >
                         View
+                      </button>
+                      <button
+                        onClick={() => setSubjectsFaculty(f)}
+                        className="text-sm font-medium text-gray-600 hover:text-gray-900"
+                      >
+                        Subjects
                       </button>
                       <button
                         onClick={() => openEditModal(f)}
@@ -718,6 +726,15 @@ export default function AdminFacultyPage() {
               <button
                 onClick={() => {
                   setViewFaculty(null);
+                  setSubjectsFaculty(viewFaculty);
+                }}
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                Subjects
+              </button>
+              <button
+                onClick={() => {
+                  setViewFaculty(null);
                   openEditModal(viewFaculty);
                 }}
                 className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
@@ -734,6 +751,14 @@ export default function AdminFacultyPage() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {subjectsFaculty && schoolId && (
+        <FacultySubjectAssignments
+          schoolId={schoolId}
+          faculty={subjectsFaculty}
+          onClose={() => setSubjectsFaculty(null)}
+        />
       )}
     </div>
   );

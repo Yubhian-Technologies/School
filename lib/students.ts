@@ -198,6 +198,15 @@ export async function createStudent(input: CreateStudentInput): Promise<CreateSt
       createdAt: serverTimestamp(),
     });
 
+    // Lets this parent read class-scoped (not student-scoped) collections
+    // like the Assignments diary — see isParentLinkedToClass in
+    // firestore.rules. Existence-only marker doc, no fields ever updated.
+    await setDoc(doc(db, "parentClassLinks", `${parentUid}_${input.classSectionId}`), {
+      parentUid,
+      classSectionId: input.classSectionId,
+      schoolId: input.schoolId,
+    });
+
     return { studentId: studentRef.id, parentUid };
   });
 }
@@ -229,10 +238,32 @@ export async function updateStudent(
   await updateDoc(doc(db, "students", studentId), updates);
 }
 
-export async function deleteStudent(student: Pick<Student, "id" | "guardianUids">) {
+export async function deleteStudent(
+  student: Pick<Student, "id" | "guardianUids" | "classSectionId">
+) {
   await deleteDoc(doc(db, "students", student.id));
   for (const guardianUid of student.guardianUids) {
+    await deleteDoc(doc(db, "parentClassLinks", `${guardianUid}_${student.classSectionId}`)).catch(() => {});
     await deleteAuthAccount(guardianUid);
+  }
+}
+
+// Students created before parentClassLinks existed (or by any future path
+// that forgets to write it) are missing the marker doc that lets their
+// parent read class-scoped collections like the Assignments diary — this
+// silently self-heals them the next time their Class Teacher opens the
+// Student Directory. Always overwrites rather than checking existence
+// first: the fields are static, so re-writing an already-correct doc is a
+// harmless no-op, and a getDoc-then-setDoc here would try to *read* a doc
+// that (for exactly the students this is trying to fix) doesn't exist yet —
+// parentClassLinks' read rule isn't guarded for a null `resource`, so that
+// read would itself throw permission-denied.
+export async function backfillParentClassLinks(students: Pick<Student, "schoolId" | "classSectionId" | "guardianUids">[]) {
+  for (const s of students) {
+    for (const guardianUid of s.guardianUids) {
+      const linkRef = doc(db, "parentClassLinks", `${guardianUid}_${s.classSectionId}`);
+      await setDoc(linkRef, { parentUid: guardianUid, classSectionId: s.classSectionId, schoolId: s.schoolId });
+    }
   }
 }
 

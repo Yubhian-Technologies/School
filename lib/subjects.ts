@@ -88,19 +88,27 @@ export function subscribeToSubjects(
     where("schoolId", "==", schoolId),
     where("className", "==", className)
   );
-  return onSnapshot(q, (snapshot) => {
-    const subjects = snapshot.docs
-      .map((docSnap) => {
-        const data = docSnap.data() as Omit<Subject, "id" | "createdAt"> & {
-          createdAt: Timestamp | null;
-        };
-        return {
-          id: docSnap.id,
-          ...data,
-          createdAt: data.createdAt ? data.createdAt.toMillis() : null,
-        };
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
-    callback(subjects);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const subjects = snapshot.docs
+        .map((docSnap) => {
+          const data = docSnap.data() as Omit<Subject, "id" | "createdAt"> & {
+            createdAt: Timestamp | null;
+          };
+          return {
+            id: docSnap.id,
+            ...data,
+            createdAt: data.createdAt ? data.createdAt.toMillis() : null,
+          };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+      callback(subjects);
+    },
+    (err) => {
+      // TEMP diagnostic — pin down which query is actually being denied.
+      // Remove once the subjects permission-denied report is resolved.
+      console.error("[subscribeToSubjects] permission-denied debug", { schoolId, className, err });
+    }
+  );
 }

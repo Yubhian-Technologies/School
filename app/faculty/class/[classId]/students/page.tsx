@@ -5,6 +5,7 @@ import Modal from "@/components/Modal";
 import { useAuth } from "@/context/AuthContext";
 import { subscribeToClassSectionForTeacher } from "@/lib/classSections";
 import {
+  backfillParentClassLinks,
   createStudent,
   deleteStudent,
   emptyParentDetails,
@@ -142,6 +143,14 @@ export default function ClassStudentsPage() {
     if (!schoolId || !mySection) return;
     return subscribeToStudentsForClass(schoolId, mySection.id, setStudents);
   }, [schoolId, mySection]);
+
+  // Self-heals students created before parentClassLinks existed, so their
+  // parent can read class-scoped collections (e.g. Assignments) — see
+  // backfillParentClassLinks for why this can't run from the parent's side.
+  useEffect(() => {
+    if (!students || students.length === 0) return;
+    backfillParentClassLinks(students);
+  }, [students]);
 
   const isEditing = editingStudent !== null;
 

@@ -109,7 +109,7 @@ export const FACULTY_NAV: NavGroup[] = [
     label: "Subject Teacher",
     items: [
       { label: "Students", href: `/faculty/subject/${DEMO_CLASS_ID}/students`, icon: Library },
-      { label: "Assignments", href: `/faculty/subject/${DEMO_CLASS_ID}/assignments`, icon: FileText },
+      { label: "Assignments", href: "/faculty/subject/assignments", icon: FileText },
       { label: "Assessments", href: `/faculty/subject/${DEMO_CLASS_ID}/assessments`, icon: ClipboardCheck },
     ],
   },

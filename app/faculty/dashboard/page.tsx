@@ -105,7 +105,7 @@ export default function FacultyDashboardPage() {
           icon={FileText}
           title="Assignments"
           subtitle="Classwork & homework"
-          href={`/faculty/subject/${DEMO_CLASS_ID}/assignments`}
+          href="/faculty/subject/assignments"
           color="orange"
         />
         <DashboardCard
