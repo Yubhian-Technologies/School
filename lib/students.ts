@@ -265,6 +265,27 @@ export function subscribeToStudentsForClass(
   });
 }
 
+// Admin-only, school-wide lookup (used by the Fees module's "search by
+// Student ID" box) — not scoped to a classSectionId, unlike
+// assertAdmissionNoAvailable above, because the admin security-rule branch
+// only needs schoolId pinned to be provable. Returns every match rather than
+// assuming one: admission numbers are only guaranteed unique within a
+// class-section (see assertAdmissionNoAvailable), so the same Student ID can
+// legitimately exist in more than one class-section.
+export async function findStudentsByAdmissionNo(
+  schoolId: string,
+  admissionNo: string
+): Promise<Student[]> {
+  const snap = await getDocs(
+    query(
+      collection(db, "students"),
+      where("schoolId", "==", schoolId),
+      where("admissionNo", "==", admissionNo.trim())
+    )
+  );
+  return snap.docs.map(mapStudentDoc);
+}
+
 export function subscribeToLinkedStudent(
   parentUid: string,
   callback: (student: Student | null) => void

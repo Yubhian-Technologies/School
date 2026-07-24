@@ -543,18 +543,23 @@ export interface Timetable {
 // Fees
 // ---------------------------------------------------------------------------
 
+// id == `${schoolId}_${classId}_${academicYear}` — a direct doc lookup, not a
+// query, so no Firestore rule-provability concerns (see lib/students.ts's
+// assertAdmissionNoAvailable comment for what that class of bug looks like).
 export interface FeeStructure {
   id: string;
   schoolId: string;
-  academicYear: string;
+  classId: string;
   className: string;
-  admission: number;
+  academicYear: string;
+  // Fixed per class (see lib/feeStructures.ts's DEFAULT_TUITION_FEE_BY_CLASS_ID)
+  // — not admin-editable, unlike books/uniform below.
   tuition: number;
   books: number;
   uniform: number;
-  transport?: number;
-  otherCharges?: number;
   total: number;
+  updatedByUid: string;
+  updatedAt: number | null;
 }
 
 export interface StudentFee {
@@ -563,11 +568,21 @@ export interface StudentFee {
   studentId: string;
   classSectionId: string;
   academicYear: string;
-  booksDiscountPct: number;
+  // Snapshot of the class FeeStructure at save time, so a later edit to the
+  // class-wide structure doesn't silently change an already-saved student's
+  // numbers.
+  tuitionFee: number;
+  booksFee: number;
+  uniformFee: number;
   tuitionDiscountPct: number;
-  totalAmount: number;
-  concessionAmount: number;
-  payable: number;
+  booksDiscountPct: number;
+  tuitionDiscountAmount: number;
+  booksDiscountAmount: number;
+  totalAmount: number; // tuitionFee + booksFee + uniformFee
+  concessionAmount: number; // tuitionDiscountAmount + booksDiscountAmount
+  payable: number; // totalAmount - concessionAmount ("Final Total Fee After Discount")
+  // Not yet surfaced anywhere (payment recording is a later build) — always
+  // paid: 0, due: payable, status: 'DUE' for now.
   paid: number;
   due: number;
   status: "PAID" | "PARTIAL" | "DUE";
