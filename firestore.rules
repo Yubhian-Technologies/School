@@ -308,11 +308,59 @@ service cloud.firestore {
         isAnyTeacherOf(resource.data.classSectionId) ||
         isGuardianOf(resource.data.studentId);
 
-      allow create, update: if isAdminOfSchool(request.resource.data.schoolId) ||
-        isClassTeacherOf(request.resource.data.classSectionId);
+      // Only the real Class Teacher of this class-section may create —
+      // Admin dropped from create (Admin is read-only reporting per the
+      // Attendance spec) and Subject Teachers already excluded
+      // (isClassTeacherOf, not isAnyTeacherOf). No update/delete for anyone,
+      // ever: previous attendance can never be modified. Because Firestore's
+      // create-vs-update branch is decided by whether the doc id already
+      // existed (not by which client method was called), a resubmit attempt
+      // on the same studentId_date via setDoc() is evaluated as `update` and
+      // denied here — this is what makes "only once per class per day"
+      // actually enforced server-side, not just a client-side check. Note:
+      // this does NOT verify request.resource.data.date is actually today —
+      // see CLAUDE.md "Known debts" for why that's deliberately left as an
+      // application-level check only.
+      allow create: if isClassTeacherOf(request.resource.data.classSectionId) &&
+        request.resource.data.markedByUid == request.auth.uid;
 
-      allow delete: if isAdminOfSchool(resource.data.schoolId) ||
-        isClassTeacherOf(resource.data.classSectionId);
+      allow update, delete: if false;
+    }
+
+    // -----------------------------------------------------------------------
+    // attendanceSummaries/{classSectionId_date}
+    // -----------------------------------------------------------------------
+    // One immutable doc per class per date — see lib/types.ts AttendanceSummary
+    // for why this exists alongside attendance/{id}. Never read by parents;
+    // they read their own child's attendance/{id} docs directly via
+    // isGuardianOf above.
+
+    // Parsed from the doc id (not read off resource.data) so a direct get()
+    // on a NOT-YET-EXISTING summary doc (the Dashboard's "today" check, true
+    // every day before attendance is taken) can still be authorized: resource
+    // is null for a get() on a nonexistent doc, and referencing
+    // resource.data.anything on it throws, which on its own would be treated
+    // as a denial. Kept alongside (not instead of) the resource.data-based
+    // checks below: those are what let the History LIST query (filtered by
+    // the classSectionId FIELD) be statically proven safe — a check based on
+    // the document id can't be correlated with a field-equality filter, so
+    // list would be denied outright without them. Firestore's `||` is
+    // error-tolerant (true if ANY operand is true, even if another operand
+    // throws), so combining both here is safe for both access patterns.
+    function summaryClassSectionId(id) {
+      return id.split('_')[0];
+    }
+
+    match /attendanceSummaries/{id} {
+      allow read: if isAdminOfSchool(resource.data.schoolId) ||
+        isAnyTeacherOf(resource.data.classSectionId) ||
+        isAdminOfSchool(classSectionDoc(summaryClassSectionId(id)).data.schoolId) ||
+        isAnyTeacherOf(summaryClassSectionId(id));
+
+      allow create: if isClassTeacherOf(request.resource.data.classSectionId) &&
+        request.resource.data.teacherUid == request.auth.uid;
+
+      allow update, delete: if false;
     }
 
     // -----------------------------------------------------------------------
