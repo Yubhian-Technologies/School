@@ -4,6 +4,7 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   query,
@@ -193,6 +194,7 @@ export async function createStudent(input: CreateStudentInput): Promise<CreateSt
       ...(mother ? { mother } : {}),
       ...(guardian ? { guardian } : {}),
       guardianUids: [parentUid],
+      loginEmail: input.loginEmail,
       status: "active",
       createdByUid: input.createdByUid,
       createdAt: serverTimestamp(),
@@ -263,6 +265,22 @@ export async function backfillParentClassLinks(students: Pick<Student, "schoolId
     for (const guardianUid of s.guardianUids) {
       const linkRef = doc(db, "parentClassLinks", `${guardianUid}_${s.classSectionId}`);
       await setDoc(linkRef, { parentUid: guardianUid, classSectionId: s.classSectionId, schoolId: s.schoolId });
+    }
+  }
+}
+
+// Students created before loginEmail was denormalized onto the student doc
+// are missing it — self-heals the next time their Class Teacher opens the
+// Student Directory, mirroring backfillParentClassLinks above. Reads the
+// linked parent's users/{uid}.email (allowed for same-school faculty of a
+// 'parent' user, see firestore.rules) and copies it onto the student doc.
+export async function backfillLoginEmails(students: Pick<Student, "id" | "guardianUids" | "loginEmail">[]) {
+  for (const s of students) {
+    if (s.loginEmail || !s.guardianUids[0]) continue;
+    const userSnap = await getDoc(doc(db, "users", s.guardianUids[0]));
+    const email = userSnap.exists() ? (userSnap.data().email as string | undefined) : undefined;
+    if (email) {
+      await updateDoc(doc(db, "students", s.id), { loginEmail: email });
     }
   }
 }

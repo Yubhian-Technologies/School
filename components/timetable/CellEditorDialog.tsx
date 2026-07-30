@@ -2,8 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import Modal from "@/components/Modal";
-import { CELL_COLOR_OPTIONS } from "@/lib/timetableCellColors";
-import type { Faculty, TimetableCellData } from "@/lib/types";
+import type { Faculty, Subject, TimetableCellData } from "@/lib/types";
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
@@ -15,13 +14,13 @@ const emptyCell: TimetableCellData = {
   facultyName: null,
   room: "",
   notes: "",
-  color: null,
 };
 
 export default function CellEditorDialog({
   title,
   cell,
   faculty,
+  subjects,
   onSave,
   onClear,
   onClose,
@@ -29,6 +28,8 @@ export default function CellEditorDialog({
   title: string;
   cell: TimetableCellData | undefined;
   faculty: Faculty[];
+  /** This class's subject catalog (lib/subjects.ts) — populates the Subject dropdown below. */
+  subjects: Subject[];
   onSave: (data: TimetableCellData) => Promise<void>;
   onClear: () => Promise<void>;
   onClose: () => void;
@@ -66,13 +67,19 @@ export default function CellEditorDialog({
           <label htmlFor="cell-subject" className={labelClass}>
             Subject
           </label>
-          <input
+          <select
             id="cell-subject"
             value={form.subject}
             onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
-            placeholder="e.g. Mathematics"
             className={inputClass}
-          />
+          >
+            <option value="">No subject</option>
+            {subjects.map((s) => (
+              <option key={s.id} value={s.name}>
+                {s.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>
@@ -122,35 +129,6 @@ export default function CellEditorDialog({
             onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
             className={inputClass}
           />
-        </div>
-
-        <div>
-          <label className={labelClass}>Cell color (optional)</label>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setForm((f) => ({ ...f, color: null }))}
-              className={`h-7 w-7 rounded-full border-2 text-xs text-gray-400 ${
-                form.color === null ? "border-indigo-500" : "border-gray-200"
-              }`}
-              aria-label="No color"
-              title="No color"
-            >
-              ✕
-            </button>
-            {CELL_COLOR_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setForm((f) => ({ ...f, color: option.value }))}
-                className={`h-7 w-7 rounded-full border-2 ${option.swatchClassName} ${
-                  form.color === option.value ? "border-indigo-500" : "border-transparent"
-                }`}
-                aria-label={option.label}
-                title={option.label}
-              />
-            ))}
-          </div>
         </div>
 
         <div className="flex gap-3 border-t border-gray-100 pt-4">

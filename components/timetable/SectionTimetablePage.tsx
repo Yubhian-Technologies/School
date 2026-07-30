@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { getClassLabel } from "@/lib/classes";
 import { getClassSection } from "@/lib/classSections";
 import { subscribeToFaculty } from "@/lib/faculty";
+import { subscribeToSubjects } from "@/lib/subjects";
 import {
   clearCell,
   createDefaultSectionTimetable,
@@ -18,6 +19,7 @@ import type {
   ClassSection,
   Faculty,
   SectionTimetable,
+  Subject,
   TimetableBreakDef,
   TimetableDayDef,
   TimetablePeriodDef,
@@ -47,6 +49,7 @@ export default function SectionTimetablePage({
   const [section, setSection] = useState<ClassSection | null>(null);
   const [timetable, setTimetable] = useState<SectionTimetable | null | undefined>(undefined);
   const [faculty, setFaculty] = useState<Faculty[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [creating, setCreating] = useState(false);
   const [editingStructure, setEditingStructure] = useState(false);
   const [editDays, setEditDays] = useState<TimetableDayDef[]>([]);
@@ -72,6 +75,11 @@ export default function SectionTimetablePage({
     if (!schoolId) return;
     return subscribeToFaculty(schoolId, setFaculty);
   }, [schoolId]);
+
+  useEffect(() => {
+    if (!schoolId) return;
+    return subscribeToSubjects(schoolId, classLabel, setSubjects);
+  }, [schoolId, classLabel]);
 
   const cellCountsByDay = useMemo(() => {
     const counts = new Map<string, number>();
@@ -264,6 +272,7 @@ export default function SectionTimetablePage({
           title={activeCellLabel}
           cell={activeCellData}
           faculty={faculty}
+          subjects={subjects}
           onClose={() => setActiveCell(null)}
           onSave={async (data) => {
             await updateCell(sectionId, activeCell.dayId, activeCell.periodId, data);

@@ -73,7 +73,6 @@ export interface TimetableCellData {
   facultyName: string | null;
   room: string;
   notes: string;
-  color: string | null;
 }
 
 export interface SectionTimetable {
@@ -293,6 +292,8 @@ export interface Student {
   guardian?: GuardianInfo;
   /** Auth uids of parents/guardians linked to this student — the sole parent -> student link. */
   guardianUids: string[];
+  /** The single "Student Login" email (used by whichever parent signs in) — denormalized here so it can be shown when viewing this student, without a separate users/{uid} read. */
+  loginEmail?: string;
 
   transport?: TransportInfo;
 
@@ -305,45 +306,69 @@ export interface Student {
 // Attendance
 // ---------------------------------------------------------------------------
 
-export type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE" | "HALF_DAY" | "LEAVE";
-
-// Which half of the day the student was PRESENT for — only set when
-// status === "HALF_DAY". "MORNING" = present morning/absent afternoon,
-// "AFTERNOON" = absent morning/present afternoon.
+// Morning and Afternoon attendance are taken (and saved) as two independent
+// events — a teacher may submit Morning at the start of the day and
+// Afternoon only later — so each half of the day is its own immutable
+// record/summary, keyed by session, rather than one combined per-day doc
+// that would need to be updated later (which firestore.rules deliberately
+// never allows — see the "one submission per class per day" note below).
 export type AttendanceSession = "MORNING" | "AFTERNOON";
 
 export interface AttendanceRecord {
-  id: string; // `${studentId}_${date}`
+  id: string; // `${studentId}_${date}_${session}`
   schoolId: string;
   classSectionId: string;
   studentId: string;
   date: string; // YYYY-MM-DD
-  status: AttendanceStatus;
-  session?: AttendanceSession;
+  session: AttendanceSession;
+  present: boolean;
   remark?: string;
   markedByUid: string;
 }
 
-// attendanceSummaries/{classSectionId}_{date} — one immutable doc per class
-// per calendar date, written atomically alongside that date's
-// attendance/{studentId}_{date} docs in a single writeBatch (see
-// lib/attendance.ts submitAttendance). Exists so the Dashboard/History can
-// answer "has today been taken?" and list past dates without reading every
-// student's individual record, and so firestore.rules has a single doc to
-// make immutable as the "one submission per class per day" lock. Never read
-// by parents — their own summary is computed client-side from their child's
-// own attendance/{id} docs only.
+// attendanceSummaries/{classSectionId}_{date}_{session} — one immutable doc
+// per class, per calendar date, per session, written atomically alongside
+// that session's attendance/{studentId}_{date}_{session} docs in a single
+// writeBatch (see lib/attendance.ts submitSessionAttendance). Exists so the
+// Dashboard/History can answer "has this session been taken?" and list past
+// dates without reading every student's individual record, and so
+// firestore.rules has a single doc to make immutable as the "one submission
+// per class per day per session" lock. Never read by parents — their own
+// summary is computed client-side from their child's own attendance/{id}
+// docs only.
 export interface AttendanceSummary {
-  id: string; // `${classSectionId}_${date}`
+  id: string; // `${classSectionId}_${date}_${session}`
   schoolId: string;
   classSectionId: string;
   date: string; // YYYY-MM-DD
+  session: AttendanceSession;
   teacherUid: string;
   submittedAt: number | null;
   totalStudents: number;
   presentCount: number;
   absentCount: number;
-  halfDayCount: number;
+}
+
+export type HolidayType = "FULL_DAY" | "HALF_DAY";
+
+// attendanceHolidays/{classSectionId}_{date} — declared by a Class Teacher
+// for a sudden holiday/half day (rain, a local event, etc.) so Take
+// Attendance stops asking for a session that was never actually held.
+// FULL_DAY cancels both Morning and Afternoon for that date; HALF_DAY
+// cancels only `cancelledSession`, leaving the other session to be taken
+// normally. Deletable (unlike attendance/attendanceSummaries) since it's a
+// same-day correction, not an attendance record — undoing a mistaken
+// declaration should be possible right up until the real session is taken.
+export interface AttendanceHoliday {
+  id: string; // `${classSectionId}_${date}`
+  schoolId: string;
+  classSectionId: string;
+  date: string; // YYYY-MM-DD
+  type: HolidayType;
+  cancelledSession?: AttendanceSession; // required iff type === "HALF_DAY"
+  reason?: string;
+  markedByUid: string;
+  createdAt: number | null;
 }
 
 // ---------------------------------------------------------------------------
