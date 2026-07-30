@@ -10,6 +10,7 @@ const COLOR_CLASSES: Record<CardColor, string> = {
   orange: "bg-orange-50 text-orange-600",
   pink: "bg-pink-50 text-pink-600",
   amber: "bg-amber-50 text-amber-600",
+  red: "bg-red-50 text-red-600",
 };
 
 export function DashboardSection({ label, children }: { label: string; children: React.ReactNode }) {

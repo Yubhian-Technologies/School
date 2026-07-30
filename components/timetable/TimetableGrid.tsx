@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment } from "react";
-import { cellClassNameForColor } from "@/lib/timetableCellColors";
 import type {
   TimetableBreakDef,
   TimetableCellData,
@@ -32,6 +31,50 @@ function BreakBanner({ brk, columns }: { brk: TimetableBreakDef; columns: number
   );
 }
 
+interface MergeInfo {
+  rowSpan: number;
+  skip: boolean;
+}
+
+// Consecutive periods in the same day column that share the same subject
+// (e.g. a "double period") are rendered as a single spanning cell instead of
+// repeating the same subject twice — purely a display merge, the underlying
+// per-period cell data is untouched. Never merges across a break: the break
+// banner is a full-width row in between, so a spanning cell there would
+// visually collide with it.
+function buildMergeMap(
+  days: TimetableDayDef[],
+  periods: TimetablePeriodDef[],
+  cells: Record<string, TimetableCellData>,
+  breaksAfterPeriod: (periodId: string) => TimetableBreakDef[]
+): Record<string, MergeInfo[]> {
+  const map: Record<string, MergeInfo[]> = {};
+  for (const day of days) {
+    const info: MergeInfo[] = periods.map(() => ({ rowSpan: 1, skip: false }));
+    let i = 0;
+    while (i < periods.length) {
+      const subject = cells[`${day.id}_${periods[i].id}`]?.subject;
+      if (!subject) {
+        i++;
+        continue;
+      }
+      let j = i;
+      while (
+        j + 1 < periods.length &&
+        breaksAfterPeriod(periods[j].id).length === 0 &&
+        cells[`${day.id}_${periods[j + 1].id}`]?.subject === subject
+      ) {
+        j++;
+      }
+      info[i] = { rowSpan: j - i + 1, skip: false };
+      for (let k = i + 1; k <= j; k++) info[k] = { rowSpan: 1, skip: true };
+      i = j + 1;
+    }
+    map[day.id] = info;
+  }
+  return map;
+}
+
 export default function TimetableGrid({
   days,
   periods,
@@ -58,6 +101,8 @@ export default function TimetableGrid({
   const breaksBeforeStart = breaks.filter((b) => b.afterPeriodId === null);
   const breaksAfterPeriod = (periodId: string) => breaks.filter((b) => b.afterPeriodId === periodId);
 
+  const mergeMap = buildMergeMap(sortedDays, sortedPeriods, cells, breaksAfterPeriod);
+
   return (
     <div className="overflow-auto rounded-xl border border-gray-200 bg-white shadow-sm">
       <table className="w-full min-w-max border-collapse text-left text-sm">
@@ -80,7 +125,7 @@ export default function TimetableGrid({
           {breaksBeforeStart.map((brk) => (
             <BreakBanner key={brk.id} brk={brk} columns={columns} />
           ))}
-          {sortedPeriods.map((period) => (
+          {sortedPeriods.map((period, periodIdx) => (
             <Fragment key={period.id}>
               <tr>
                 <td className="sticky left-0 z-10 border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-bold text-gray-800">
@@ -92,8 +137,10 @@ export default function TimetableGrid({
                   )}
                 </td>
                 {sortedDays.map((day) => {
+                  const merge = mergeMap[day.id][periodIdx];
+                  if (merge.skip) return null;
+
                   const cell = cells[`${day.id}_${period.id}`];
-                  const colorClass = cellClassNameForColor(cell?.color ?? null);
                   const hasContent = Boolean(cell?.subject || cell?.facultyName || cell?.room);
                   const isHighlighted =
                     highlightFacultyId !== null && cell?.facultyId === highlightFacultyId;
@@ -101,33 +148,23 @@ export default function TimetableGrid({
                   return (
                     <td
                       key={day.id}
+                      rowSpan={merge.rowSpan}
                       onClick={readOnly ? undefined : () => onCellClick?.(day.id, period.id)}
-                      className={`min-h-16 border border-gray-200 p-1.5 align-top transition-colors ${
+                      className={`min-h-16 border border-gray-200 p-1.5 text-center align-middle transition-colors ${
                         readOnly ? "" : "cursor-pointer hover:bg-indigo-50/40"
-                      }`}
+                      } ${isHighlighted ? "bg-indigo-50" : ""}`}
                     >
                       {hasContent ? (
-                        <div
-                          className={`space-y-0.5 rounded-lg border-l-4 px-2 py-1.5 shadow-sm ${
-                            isHighlighted ? "border-indigo-600 ring-2 ring-indigo-400" : "border-indigo-300"
-                          } ${colorClass || "bg-white"}`}
-                        >
+                        <div>
                           {cell.subject && (
                             <p className="text-sm font-semibold text-gray-900">{cell.subject}</p>
                           )}
                           {cell.facultyName && (
                             <p className="text-xs text-gray-600">{cell.facultyName}</p>
                           )}
-                          {cell.room && <p className="text-[11px] text-gray-400">{cell.room}</p>}
-                        </div>
-                      ) : readOnly ? (
-                        <div className="flex min-h-12 items-center justify-center text-xs text-gray-300">
-                          —
                         </div>
                       ) : (
-                        <div className="flex min-h-12 items-center justify-center rounded-lg border border-dashed border-gray-200 text-xs text-gray-300">
-                          + Add Subject
-                        </div>
+                        <div className="text-xs text-gray-300">{readOnly ? "—" : "+ Add Subject"}</div>
                       )}
                     </td>
                   );

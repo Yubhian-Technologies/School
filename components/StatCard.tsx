@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 
-export type CardColor = "indigo" | "purple" | "green" | "orange" | "pink" | "amber";
+export type CardColor = "indigo" | "purple" | "green" | "orange" | "pink" | "amber" | "red";
 
 const COLOR_CLASSES: Record<CardColor, string> = {
   indigo: "bg-indigo-50 text-indigo-600",
@@ -10,6 +10,7 @@ const COLOR_CLASSES: Record<CardColor, string> = {
   orange: "bg-orange-50 text-orange-600",
   pink: "bg-pink-50 text-pink-600",
   amber: "bg-amber-50 text-amber-600",
+  red: "bg-red-50 text-red-600",
 };
 
 function StatCardInner({

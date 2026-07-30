@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, CalendarX, ChevronLeft, ChevronRight, Clock, Percent } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import Modal from "@/components/Modal";
 import PageHeader from "@/components/PageHeader";
-import StatCard from "@/components/StatCard";
 import { useAuth } from "@/context/AuthContext";
-import { subscribeToChildAttendanceForRange, summarizeAttendanceRecords } from "@/lib/attendance";
+import { groupRecordsByDate, subscribeToChildAttendanceForRange, type DayAttendance } from "@/lib/attendance";
 import { subscribeToLinkedStudent } from "@/lib/students";
 import type { AttendanceRecord, Student } from "@/lib/types";
 
@@ -23,21 +22,50 @@ function monthBounds(year: number, month: number) {
 
 const MONTH_LABEL = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
 
-function statusDotClass(record: AttendanceRecord | undefined) {
-  if (!record) return "";
-  if (record.status === "PRESENT") return "bg-green-500";
-  if (record.status === "ABSENT") return "bg-red-500";
-  if (record.status === "HALF_DAY") return "bg-amber-500";
-  return "bg-gray-400";
+function dayStatusDotClass(day: DayAttendance | undefined) {
+  if (!day || (!day.morning && !day.afternoon)) return "";
+  if (day.morning?.present && day.afternoon?.present) return "bg-green-500";
+  if (day.morning && day.afternoon && !day.morning.present && !day.afternoon.present) return "bg-red-500";
+  return "bg-amber-500";
 }
 
-function statusLabel(record: AttendanceRecord) {
-  if (record.status === "PRESENT") return "Present";
-  if (record.status === "ABSENT") return "Absent";
-  if (record.status === "HALF_DAY") {
-    return `Half Day — ${record.session === "MORNING" ? "present morning, absent afternoon" : "absent morning, present afternoon"}`;
-  }
-  return record.status;
+function sessionLabel(record: AttendanceRecord | undefined) {
+  if (!record) return "Not taken";
+  return record.present ? "Present" : "Absent";
+}
+
+function sessionRatio(records: AttendanceRecord[]) {
+  const present = records.filter((r) => r.present).length;
+  const total = records.length;
+  const percent = total === 0 ? 0 : (present / total) * 100;
+  return { present, total, percent };
+}
+
+function AttendancePanel({
+  label,
+  present,
+  total,
+  percent,
+  showRatio,
+  bg,
+  text,
+}: {
+  label: string;
+  present: number;
+  total: number;
+  percent: number;
+  showRatio: boolean;
+  bg: string;
+  text: string;
+}) {
+  return (
+    <div className={`flex-1 px-4 py-4 text-center ${bg}`}>
+      <p className={`text-xs font-semibold uppercase tracking-wide ${text}`}>{label}</p>
+      <p className="mt-1 text-lg font-bold text-gray-900">
+        {showRatio ? `${present} / ${total} (${percent.toFixed(2)}%)` : `${percent.toFixed(2)}%`}
+      </p>
+    </div>
+  );
 }
 
 export default function ParentAttendancePage() {
@@ -48,7 +76,7 @@ export default function ParentAttendancePage() {
     return { year: now.getFullYear(), month: now.getMonth() };
   });
   const [monthRecords, setMonthRecords] = useState<AttendanceRecord[] | null>(null);
-  const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
+  const [selectedDay, setSelectedDay] = useState<DayAttendance | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -62,13 +90,17 @@ export default function ParentAttendancePage() {
     return subscribeToChildAttendanceForRange(student.id, start, end, setMonthRecords);
   }, [student, start, end]);
 
-  const recordsByDate = useMemo(() => {
-    const map = new Map<string, AttendanceRecord>();
-    for (const r of monthRecords ?? []) map.set(r.date, r);
-    return map;
-  }, [monthRecords]);
+  const dayRowsByDate = useMemo(() => groupRecordsByDate(monthRecords ?? []), [monthRecords]);
 
-  const summary = useMemo(() => summarizeAttendanceRecords(monthRecords ?? []), [monthRecords]);
+  const morningStats = useMemo(
+    () => sessionRatio((monthRecords ?? []).filter((r) => r.session === "MORNING")),
+    [monthRecords]
+  );
+  const afternoonStats = useMemo(
+    () => sessionRatio((monthRecords ?? []).filter((r) => r.session === "AFTERNOON")),
+    [monthRecords]
+  );
+  const overallStats = useMemo(() => sessionRatio(monthRecords ?? []), [monthRecords]);
 
   if (student === undefined) {
     return <p className="text-sm text-gray-500">Loading…</p>;
@@ -99,11 +131,34 @@ export default function ParentAttendancePage() {
     <div className="space-y-8">
       <PageHeader title="Attendance" subtitle={`${student.name}'s attendance record`} />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard icon={CalendarCheck} label="Present Days" value={summary.present} color="green" />
-        <StatCard icon={CalendarX} label="Absent Days" value={summary.absent} color="pink" />
-        <StatCard icon={Clock} label="Half Days" value={summary.halfDay} color="amber" />
-        <StatCard icon={Percent} label="Attendance %" value={`${summary.percent}%`} color="indigo" />
+      <div className="flex divide-x divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 shadow-sm">
+        <AttendancePanel
+          label="Morning Attendance"
+          present={morningStats.present}
+          total={morningStats.total}
+          percent={morningStats.percent}
+          showRatio
+          bg="bg-green-50"
+          text="text-green-700"
+        />
+        <AttendancePanel
+          label="Afternoon Attendance"
+          present={afternoonStats.present}
+          total={afternoonStats.total}
+          percent={afternoonStats.percent}
+          showRatio
+          bg="bg-orange-50"
+          text="text-orange-600"
+        />
+        <AttendancePanel
+          label="Overall Attendance"
+          present={overallStats.present}
+          total={overallStats.total}
+          percent={overallStats.percent}
+          showRatio={false}
+          bg="bg-indigo-50"
+          text="text-indigo-600"
+        />
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -141,20 +196,19 @@ export default function ParentAttendancePage() {
             ))}
             {dayCells.map((day) => {
               const dateStr = `${viewDate.year}-${pad(viewDate.month + 1)}-${pad(day)}`;
-              const record = recordsByDate.get(dateStr);
+              const dayRow = dayRowsByDate.get(dateStr);
+              const hasData = Boolean(dayRow?.morning || dayRow?.afternoon);
               return (
                 <button
                   key={day}
-                  disabled={!record}
-                  onClick={() => record && setSelectedRecord(record)}
+                  disabled={!hasData}
+                  onClick={() => dayRow && setSelectedDay(dayRow)}
                   className={`flex h-12 flex-col items-center justify-center gap-1 rounded-lg text-sm ${
-                    record
-                      ? "cursor-pointer text-gray-900 hover:bg-gray-50"
-                      : "cursor-default text-gray-400"
+                    hasData ? "cursor-pointer text-gray-900 hover:bg-gray-50" : "cursor-default text-gray-400"
                   }`}
                 >
                   <span>{day}</span>
-                  <span className={`h-1.5 w-1.5 rounded-full ${statusDotClass(record)}`} />
+                  <span className={`h-1.5 w-1.5 rounded-full ${dayStatusDotClass(dayRow)}`} />
                 </button>
               );
             })}
@@ -162,17 +216,18 @@ export default function ParentAttendancePage() {
         )}
       </div>
 
-      {selectedRecord && (
-        <Modal title="Attendance Detail" onClose={() => setSelectedRecord(null)}>
+      {selectedDay && (
+        <Modal title="Attendance Detail" onClose={() => setSelectedDay(null)}>
           <div className="space-y-2 text-sm">
             <p className="font-semibold text-gray-900">
-              {new Date(`${selectedRecord.date}T00:00:00`).toLocaleDateString(undefined, {
+              {new Date(`${selectedDay.date}T00:00:00`).toLocaleDateString(undefined, {
                 year: "numeric",
                 month: "long",
                 day: "numeric",
               })}
             </p>
-            <p className="text-gray-600">{statusLabel(selectedRecord)}</p>
+            <p className="text-gray-600">Morning: {sessionLabel(selectedDay.morning)}</p>
+            <p className="text-gray-600">Afternoon: {sessionLabel(selectedDay.afternoon)}</p>
           </div>
         </Modal>
       )}

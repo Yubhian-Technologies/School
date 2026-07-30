@@ -187,10 +187,17 @@ service cloud.firestore {
     // -----------------------------------------------------------------------
 
     match /users/{uid} {
+      // The parent-of-school branch lets a faculty member read a parent's
+      // login email (only) — needed so a class teacher can view/backfill
+      // the "Student Login" email shown on a student's profile, for
+      // students created before that email was denormalized onto the
+      // students doc itself. Scoped to role == 'parent' so faculty can never
+      // read another faculty/admin's user doc this way.
       allow get: if isSignedIn() && (
         request.auth.uid == uid ||
         isSuperAdmin() ||
-        (isAdmin() && resource.data.schoolId == mySchool())
+        (isAdmin() && resource.data.schoolId == mySchool()) ||
+        (isFacultyOfSchool(resource.data.schoolId) && resource.data.role == 'parent')
       );
 
       allow list: if isSuperAdmin() ||
@@ -361,6 +368,30 @@ service cloud.firestore {
         request.resource.data.teacherUid == request.auth.uid;
 
       allow update, delete: if false;
+    }
+
+    // -----------------------------------------------------------------------
+    // attendanceHolidays/{classSectionId_date}
+    // -----------------------------------------------------------------------
+    // Declared by a Class Teacher to cancel a sudden holiday/half day — see
+    // lib/types.ts AttendanceHoliday. Same nonexistent-doc get() pattern as
+    // attendanceSummaries above (most dates have no holiday doc at all), so
+    // the id-parsed branch is needed alongside the resource.data-based one.
+
+    match /attendanceHolidays/{id} {
+      allow read: if isAdminOfSchool(resource.data.schoolId) ||
+        isAnyTeacherOf(resource.data.classSectionId) ||
+        isAdminOfSchool(classSectionDoc(summaryClassSectionId(id)).data.schoolId) ||
+        isAnyTeacherOf(summaryClassSectionId(id));
+
+      allow create: if isClassTeacherOf(request.resource.data.classSectionId) &&
+        request.resource.data.markedByUid == request.auth.uid;
+
+      // Deletable (unlike attendance/attendanceSummaries) so a mistaken
+      // declaration can be undone before the real session is taken.
+      allow update: if false;
+      allow delete: if isAdminOfSchool(resource.data.schoolId) ||
+        isClassTeacherOf(resource.data.classSectionId);
     }
 
     // -----------------------------------------------------------------------

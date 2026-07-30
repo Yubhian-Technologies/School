@@ -5,6 +5,7 @@ import Modal from "@/components/Modal";
 import { useAuth } from "@/context/AuthContext";
 import { subscribeToClassSectionForTeacher } from "@/lib/classSections";
 import {
+  backfillLoginEmails,
   backfillParentClassLinks,
   createStudent,
   deleteStudent,
@@ -124,11 +125,6 @@ export default function ClassStudentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [createdResult, setCreatedResult] = useState<{
-    admissionNo: string;
-    loginEmail: string;
-    loginPassword: string;
-  } | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -150,6 +146,7 @@ export default function ClassStudentsPage() {
   useEffect(() => {
     if (!students || students.length === 0) return;
     backfillParentClassLinks(students);
+    backfillLoginEmails(students);
   }, [students]);
 
   const isEditing = editingStudent !== null;
@@ -167,7 +164,6 @@ export default function ClassStudentsPage() {
     setDigitalIdFile(null);
     setExistingDigitalId(null);
     setError(null);
-    setCreatedResult(null);
     setEditingStudent(null);
   }
 
@@ -205,7 +201,6 @@ export default function ClassStudentsPage() {
     setDigitalIdFile(null);
     setExistingDigitalId(s.digitalId ?? null);
     setError(null);
-    setCreatedResult(null);
     setEditingStudent(s);
     setModalOpen(true);
   }
@@ -266,7 +261,7 @@ export default function ClassStudentsPage() {
           loginEmail,
           loginPassword,
         });
-        setCreatedResult({ admissionNo: form.admissionNo, loginEmail, loginPassword });
+        closeModal();
       }
     } catch (err) {
       const code = (err as { code?: string }).code;
@@ -438,34 +433,11 @@ export default function ClassStudentsPage() {
 
       {modalOpen && (
         <Modal
-          title={createdResult ? "Student Added" : isEditing ? "Edit Student" : "Add Student"}
+          title={isEditing ? "Edit Student" : "Add Student"}
           onClose={closeModal}
           maxWidthClassName="max-w-2xl"
         >
-          {createdResult ? (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                Student <span className="font-semibold text-gray-900">{createdResult.admissionNo}</span>{" "}
-                was added and a login was created for the parent to use.
-              </p>
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                <p className="font-semibold">Login — save this now, it won&apos;t be shown again:</p>
-                <p className="mt-2">
-                  Email: <span className="font-mono">{createdResult.loginEmail}</span>
-                </p>
-                <p>
-                  Password: <span className="font-mono">{createdResult.loginPassword}</span>
-                </p>
-              </div>
-              <button
-                onClick={closeModal}
-                className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
-              >
-                Done
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label htmlFor="student-photo" className={labelClass}>
                   Student Photograph
@@ -795,8 +767,7 @@ export default function ClassStudentsPage() {
               >
                 {submitting ? "Saving…" : isEditing ? "Update Student" : "Save Student"}
               </button>
-            </form>
-          )}
+          </form>
         </Modal>
       )}
 
@@ -888,6 +859,11 @@ export default function ClassStudentsPage() {
                   ))}
                 </dl>
               )}
+            </div>
+
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-semibold text-gray-900">Student Login</h3>
+              <p className="mt-2 text-sm text-gray-800">{viewStudent.loginEmail || "—"}</p>
             </div>
           </div>
         </Modal>

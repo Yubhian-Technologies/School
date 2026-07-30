@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import {
-  computeAttendancePercent,
+  computeDayAttendancePercent,
+  computeSessionAttendancePercent,
   subscribeToAttendanceRecordsForDate,
   subscribeToAttendanceSummary,
 } from "@/lib/attendance";
@@ -30,33 +31,20 @@ function StatBadge({ label, value }: { label: string; value: string | number }) 
   );
 }
 
-function StatusBadge({ record }: { record: AttendanceRecord }) {
-  if (record.status === "PRESENT") {
+function SessionBadge({ record }: { record: AttendanceRecord | undefined }) {
+  if (!record) {
     return (
-      <span className="rounded-md bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">
-        Present
+      <span className="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500">
+        Not taken
       </span>
     );
   }
-  if (record.status === "ABSENT") {
-    return (
-      <span className="rounded-md bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
-        Absent
-      </span>
-    );
-  }
-  if (record.status === "HALF_DAY") {
-    return (
-      <span className="rounded-md bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-        Half Day —{" "}
-        {record.session === "MORNING" ? "present morning" : "present afternoon"}
-      </span>
-    );
-  }
-  return (
-    <span className="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
-      {record.status}
+  return record.present ? (
+    <span className="rounded-md bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">
+      Present
     </span>
+  ) : (
+    <span className="rounded-md bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">Absent</span>
   );
 }
 
@@ -65,7 +53,8 @@ export default function AttendanceDateDetail({ date }: { date: string }) {
   const schoolId = profile?.schoolId ?? null;
 
   const [mySection, setMySection] = useState<ClassSection | null | undefined>(undefined);
-  const [summary, setSummary] = useState<AttendanceSummary | null | undefined>(undefined);
+  const [morningSummary, setMorningSummary] = useState<AttendanceSummary | null | undefined>(undefined);
+  const [afternoonSummary, setAfternoonSummary] = useState<AttendanceSummary | null | undefined>(undefined);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
 
@@ -76,7 +65,12 @@ export default function AttendanceDateDetail({ date }: { date: string }) {
 
   useEffect(() => {
     if (!mySection) return;
-    return subscribeToAttendanceSummary(mySection.id, date, setSummary);
+    return subscribeToAttendanceSummary(mySection.id, date, "MORNING", setMorningSummary);
+  }, [mySection, date]);
+
+  useEffect(() => {
+    if (!mySection) return;
+    return subscribeToAttendanceSummary(mySection.id, date, "AFTERNOON", setAfternoonSummary);
   }, [mySection, date]);
 
   useEffect(() => {
@@ -108,11 +102,21 @@ export default function AttendanceDateDetail({ date }: { date: string }) {
   }
 
   const studentById = new Map(students.map((s) => [s.id, s]));
-  const sortedRecords = [...records].sort((a, b) => {
-    const rollA = studentById.get(a.studentId)?.rollNo ?? "";
-    const rollB = studentById.get(b.studentId)?.rollNo ?? "";
+  const recordsByStudent = new Map<string, { morning?: AttendanceRecord; afternoon?: AttendanceRecord }>();
+  for (const r of records) {
+    const entry = recordsByStudent.get(r.studentId) ?? {};
+    if (r.session === "MORNING") entry.morning = r;
+    else entry.afternoon = r;
+    recordsByStudent.set(r.studentId, entry);
+  }
+  const sortedStudentIds = [...recordsByStudent.keys()].sort((a, b) => {
+    const rollA = studentById.get(a)?.rollNo ?? "";
+    const rollB = studentById.get(b)?.rollNo ?? "";
     return rollA.localeCompare(rollB);
   });
+
+  const noneTaken = morningSummary === null && afternoonSummary === null;
+  const loading = morningSummary === undefined || afternoonSummary === undefined;
 
   return (
     <div>
@@ -131,20 +135,31 @@ export default function AttendanceDateDetail({ date }: { date: string }) {
         </p>
       </div>
 
-      {summary === undefined ? (
+      {loading ? (
         <p className="mt-6 text-sm text-gray-500">Loading…</p>
-      ) : summary === null ? (
+      ) : noneTaken ? (
         <div className="mt-6 rounded-xl border border-gray-200 bg-white p-16 text-center shadow-sm">
           <p className="text-sm text-gray-500">No attendance was recorded for this date.</p>
         </div>
       ) : (
         <>
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <StatBadge label="Present" value={summary.presentCount} />
-            <StatBadge label="Absent" value={summary.absentCount} />
-            <StatBadge label="Half Day" value={summary.halfDayCount} />
-            <StatBadge label="Total" value={summary.totalStudents} />
-            <StatBadge label="Attendance %" value={`${computeAttendancePercent(summary)}%`} />
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatBadge
+              label="Morning Present"
+              value={morningSummary ? morningSummary.presentCount : "—"}
+            />
+            <StatBadge
+              label="Afternoon Present"
+              value={afternoonSummary ? afternoonSummary.presentCount : "—"}
+            />
+            <StatBadge
+              label="Morning %"
+              value={morningSummary ? `${computeSessionAttendancePercent(morningSummary)}%` : "—"}
+            />
+            <StatBadge
+              label="Day Attendance %"
+              value={`${computeDayAttendancePercent(morningSummary, afternoonSummary)}%`}
+            />
           </div>
 
           <div className="mt-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -153,20 +168,25 @@ export default function AttendanceDateDetail({ date }: { date: string }) {
                 <tr>
                   <th className="px-4 py-3">Roll No</th>
                   <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Morning</th>
+                  <th className="px-4 py-3">Afternoon</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {sortedRecords.map((r) => {
-                  const student = studentById.get(r.studentId);
+                {sortedStudentIds.map((studentId) => {
+                  const student = studentById.get(studentId);
+                  const entry = recordsByStudent.get(studentId)!;
                   return (
-                    <tr key={r.id}>
+                    <tr key={studentId}>
                       <td className="px-4 py-3 text-gray-600">{student?.rollNo ?? "—"}</td>
                       <td className="px-4 py-3 font-medium text-gray-900">
                         {student?.name ?? "(removed student)"}
                       </td>
                       <td className="px-4 py-3">
-                        <StatusBadge record={r} />
+                        <SessionBadge record={entry.morning} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <SessionBadge record={entry.afternoon} />
                       </td>
                     </tr>
                   );
