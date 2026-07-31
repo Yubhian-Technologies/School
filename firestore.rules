@@ -11,7 +11,11 @@ rules_version = '2';
 //      school; write: admin of that school only. (e.g. circulars, events,
 //      activities, transportBuses, feeStructures, classSections,
 //      facultyAssignments.) To add one: append its name to the list in
-//      isSchoolScopedAdminCollection() below. Nothing else changes.
+//      isSchoolScopedAdminCollection() below. Nothing else changes. NOTE:
+//      only safe for a collection that's never read via a direct get() on a
+//      doc id that might not exist — this bucket's read rule always touches
+//      resource.data with no null-resource fallback (see holidays below for
+//      why that matters, and the "Firestore gotchas" note in CLAUDE.md).
 //
 //   2. PARENT_REVIEWED_REQUEST_COLLECTIONS — parent creates a doc scoped by
 //      (schoolId, classSectionId, studentId, parentUid, status: 'pending');
@@ -146,6 +150,16 @@ service cloud.firestore {
 
     // Bucket 1: same-school read, admin-of-school write. New members: add the
     // collection name to isSchoolScopedAdminCollection() above, nothing else.
+    // Deliberately does NOT have a `resource == null` fallback — this bucket
+    // is read via `list` queries everywhere (Subjects, Classes & Sections,
+    // Faculty's subject assignments, Transport, Timetable...), and mixing a
+    // null-resource branch into a rule alongside the query-provable
+    // resource.data branch isn't something to gamble on here without a live
+    // Firestore rules simulator to confirm the `list` provability check
+    // still reduces correctly for every existing member. A collection that's
+    // read via direct get() on an id that might not exist (feeStructures
+    // before an admin configures a class's fees, holidays before a date is
+    // declared) needs its own dedicated block instead — see holidays below.
     match /{collection}/{id} {
       allow read: if isSchoolScopedAdminCollection(collection) && inSameSchool(resource.data.schoolId);
       allow create, update: if isSchoolScopedAdminCollection(collection) &&
@@ -371,27 +385,43 @@ service cloud.firestore {
     }
 
     // -----------------------------------------------------------------------
-    // attendanceHolidays/{classSectionId_date}
+    // holidays/{schoolId_date} — declared by the Admin, school-wide (see
+    // lib/types.ts Holiday). NOT in the isSchoolScopedAdminCollection bucket
+    // even though the read/write shape matches it exactly: Take
+    // Attendance/the Dashboard do a direct get() on TODAY's doc every day,
+    // and most days aren't a holiday — that get() hits a nonexistent doc far
+    // more often than not, making `resource` null. The bucket's shared read
+    // rule only checks resource.data.schoolId with no null-resource
+    // fallback, so it throws (permission-denied) on exactly the common case.
+    // Parsing schoolId from the id instead (same trick as
+    // summaryClassSectionId above) avoids resource.data entirely on read, so
+    // it works whether or not the doc exists. Every Sunday is a holiday by
+    // default at the application level (see lib/holidays.ts's
+    // isDefaultHoliday) without needing a stored doc at all.
     // -----------------------------------------------------------------------
-    // Declared by a Class Teacher to cancel a sudden holiday/half day — see
-    // lib/types.ts AttendanceHoliday. Same nonexistent-doc get() pattern as
-    // attendanceSummaries above (most dates have no holiday doc at all), so
-    // the id-parsed branch is needed alongside the resource.data-based one.
 
-    match /attendanceHolidays/{id} {
-      allow read: if isAdminOfSchool(resource.data.schoolId) ||
-        isAnyTeacherOf(resource.data.classSectionId) ||
-        isAdminOfSchool(classSectionDoc(summaryClassSectionId(id)).data.schoolId) ||
-        isAnyTeacherOf(summaryClassSectionId(id));
+    function holidaySchoolId(id) {
+      return id.split('_')[0];
+    }
 
-      allow create: if isClassTeacherOf(request.resource.data.classSectionId) &&
-        request.resource.data.markedByUid == request.auth.uid;
+    // Needs BOTH branches below, same reasoning as attendanceSummaries
+    // above: the id-parsed branch covers a direct get() on TODAY's holiday
+    // doc (usually nonexistent, resource == null, so the check must avoid
+    // touching resource.data) — the Faculty Attendance pages' use case. The
+    // resource.data branch is what makes the Admin Holidays calendar's
+    // ranged LIST query (filtered by the schoolId FIELD) provable — a check
+    // based on the document id can't be correlated with a field-equality
+    // filter, so that list would be denied outright without it. Firestore's
+    // `||` is error-tolerant, so combining both here is safe for both access
+    // patterns, exactly like attendanceSummaries.
+    match /holidays/{id} {
+      allow read: if isSuperAdmin() ||
+        inSameSchool(holidaySchoolId(id)) ||
+        inSameSchool(resource.data.schoolId);
 
-      // Deletable (unlike attendance/attendanceSummaries) so a mistaken
-      // declaration can be undone before the real session is taken.
-      allow update: if false;
-      allow delete: if isAdminOfSchool(resource.data.schoolId) ||
-        isClassTeacherOf(resource.data.classSectionId);
+      allow create, update: if isAdminOfSchool(request.resource.data.schoolId);
+
+      allow delete: if isAdminOfSchool(resource.data.schoolId);
     }
 
     // -----------------------------------------------------------------------
@@ -430,19 +460,43 @@ service cloud.firestore {
     }
 
     // -----------------------------------------------------------------------
-    // assessments/{id} — Subject Teacher only
+    // assessments/{id} — Subject Teacher-conducted quizzes/competitions.
+    // Class-scoped like assignments/{id} (not per-student) — see
+    // lib/types.ts Assessment. Written by the specific Subject Teacher
+    // assigned to that class-section+subject (via facultyAssignments), same
+    // as assignments/{id} — tightened from the old isAnyTeacherOf
+    // placeholder now that real per-subject assignment data exists.
     // -----------------------------------------------------------------------
 
     match /assessments/{id} {
       allow read: if isAdminOfSchool(resource.data.schoolId) ||
         isAnyTeacherOf(resource.data.classSectionId) ||
+        isParentLinkedToClass(resource.data.classSectionId);
+
+      allow create, update: if isAdminOfSchool(request.resource.data.schoolId) ||
+        isSubjectTeacherOf(request.resource.data.classSectionId, request.resource.data.subjectId);
+
+      allow delete: if isAdminOfSchool(resource.data.schoolId) ||
+        isSubjectTeacherOf(resource.data.classSectionId, resource.data.subjectId);
+    }
+
+    // -----------------------------------------------------------------------
+    // academicRecords/{id} — "Academics": formal exam marks per student per
+    // subject (Parent "Academics" page), entered by the Subject Teacher of
+    // that subject — see lib/types.ts AcademicRecord. Student-scoped (unlike
+    // assessments above), same write gate as assignments/assessments.
+    // -----------------------------------------------------------------------
+
+    match /academicRecords/{id} {
+      allow read: if isAdminOfSchool(resource.data.schoolId) ||
+        isAnyTeacherOf(resource.data.classSectionId) ||
         isGuardianOf(resource.data.studentId);
 
       allow create, update: if isAdminOfSchool(request.resource.data.schoolId) ||
-        isAnyTeacherOf(request.resource.data.classSectionId);
+        isSubjectTeacherOf(request.resource.data.classSectionId, request.resource.data.subjectId);
 
       allow delete: if isAdminOfSchool(resource.data.schoolId) ||
-        isAnyTeacherOf(resource.data.classSectionId);
+        isSubjectTeacherOf(resource.data.classSectionId, resource.data.subjectId);
     }
 
     // parentRequests/{id} and leaveRequests/{id} are handled by the
@@ -544,12 +598,29 @@ service cloud.firestore {
     // isn't sensitive per-student data).
 
     // -----------------------------------------------------------------------
-    // studentFees/{studentId} — sensitive, admin write, guardian-only read
+    // studentFees/{studentId} — sensitive, guardian-only read (+ admin/Class
+    // Teacher). Class Teacher write is for the negotiated final fee — Admin
+    // sets the class-wide feeStructures default, the Class Teacher may then
+    // adjust an individual student's discount/payable after negotiation.
     // -----------------------------------------------------------------------
 
+    // Read resolves schoolId/classSectionId via the always-existing
+    // students/{studentId} doc, not studentFees' own (possibly nonexistent)
+    // resource.data — a student with no fee configured yet is the common
+    // case (right after Add Student, before Admin sets discounts), and a
+    // direct get() on that doc has resource == null then. Touching
+    // resource.data.schoolId in that case throws — isGuardianOf already
+    // sidesteps this (it goes via studentDoc independently), but the
+    // admin/class-teacher branches didn't, and had no fallback, so opening a
+    // new student's fee detail as Admin denied the read outright.
     match /studentFees/{studentId} {
-      allow read: if isAdminOfSchool(resource.data.schoolId) || isGuardianOf(studentId);
-      allow create, update: if isAdminOfSchool(request.resource.data.schoolId);
+      allow read: if isAdminOfSchool(studentDoc(studentId).data.schoolId) ||
+        isGuardianOf(studentId) ||
+        isClassTeacherOf(studentDoc(studentId).data.classSectionId);
+
+      allow create, update: if isAdminOfSchool(request.resource.data.schoolId) ||
+        isClassTeacherOf(request.resource.data.classSectionId);
+
       allow delete: if isAdminOfSchool(resource.data.schoolId);
     }
 
@@ -571,6 +642,32 @@ service cloud.firestore {
 
       allow delete: if isAdminOfSchool(resource.data.schoolId) ||
         request.auth.uid == resource.data.uploadedByUid;
+    }
+
+    // -----------------------------------------------------------------------
+    // documentRequirements/{classSectionId} — which DocumentTypes the Class
+    // Teacher (or Admin) has opened up for parents to upload for this
+    // section — see lib/types.ts DocumentRequirement. Doesn't fit either
+    // extensible bucket (keyed by classSectionId, and Class Teacher — not
+    // just Admin — can write it), so it's a dedicated block, same shape as
+    // announcements above. The doc id IS the classSectionId, and a section
+    // with no requirements configured yet has no doc at all — the read
+    // rule's admin branch resolves schoolId via classSectionDoc(classSectionId)
+    // (a real, always-existing doc) rather than resource.data.schoolId, so a
+    // direct get() on a not-yet-created config doc doesn't throw (same class
+    // of gotcha the holidays block above works around).
+    // -----------------------------------------------------------------------
+
+    match /documentRequirements/{classSectionId} {
+      allow read: if isAdminOfSchool(classSectionDoc(classSectionId).data.schoolId) ||
+        isAnyTeacherOf(classSectionId) ||
+        isParentLinkedToClass(classSectionId);
+
+      allow create, update: if isAdminOfSchool(request.resource.data.schoolId) ||
+        isClassTeacherOf(classSectionId);
+
+      allow delete: if isAdminOfSchool(classSectionDoc(classSectionId).data.schoolId) ||
+        isClassTeacherOf(classSectionId);
     }
   }
 }

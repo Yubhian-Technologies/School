@@ -60,8 +60,24 @@
       "collectionGroup": "assessments",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "classSectionId", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "academicRecords",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "studentId", "order": "ASCENDING" },
-        { "fieldPath": "examType", "order": "ASCENDING" }
+        { "fieldPath": "subjectId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "holidays",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "schoolId", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
       ]
     },
     {
