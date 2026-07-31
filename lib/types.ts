@@ -250,6 +250,7 @@ export interface TransportInfo {
   busNumber?: string;
   route?: string;
   boardingPoint?: string;
+  feePaid?: boolean;
 }
 
 export interface Student {
@@ -351,23 +352,25 @@ export interface AttendanceSummary {
 
 export type HolidayType = "FULL_DAY" | "HALF_DAY";
 
-// attendanceHolidays/{classSectionId}_{date} — declared by a Class Teacher
-// for a sudden holiday/half day (rain, a local event, etc.) so Take
-// Attendance stops asking for a session that was never actually held.
-// FULL_DAY cancels both Morning and Afternoon for that date; HALF_DAY
-// cancels only `cancelledSession`, leaving the other session to be taken
-// normally. Deletable (unlike attendance/attendanceSummaries) since it's a
-// same-day correction, not an attendance record — undoing a mistaken
-// declaration should be possible right up until the real session is taken.
-export interface AttendanceHoliday {
-  id: string; // `${classSectionId}_${date}`
+// holidays/{schoolId}_{date} — declared by the Admin (public holidays,
+// vacations, sudden/emergency closures), for the WHOLE SCHOOL — every
+// class-section, not just one. Supersedes an earlier per-class-teacher
+// design: holiday declarations are school-wide policy, not something an
+// individual Class Teacher should own. FULL_DAY cancels both Morning and
+// Afternoon attendance for that date; HALF_DAY cancels only
+// `cancelledSession`. Every Sunday is treated as a holiday by default at the
+// application level (see lib/holidays.ts's isDefaultHoliday) without needing
+// a stored document for each one — a doc here is only for exceptions
+// (declared public holidays, vacations, emergency closures) or for
+// overriding a default (e.g. a working Sunday).
+export interface Holiday {
+  id: string; // `${schoolId}_${date}`
   schoolId: string;
-  classSectionId: string;
   date: string; // YYYY-MM-DD
   type: HolidayType;
   cancelledSession?: AttendanceSession; // required iff type === "HALF_DAY"
-  reason?: string;
-  markedByUid: string;
+  reason: string;
+  createdByUid: string;
   createdAt: number | null;
 }
 
@@ -408,30 +411,47 @@ export interface Achievement {
   createdByUid: string;
 }
 
-export type AssessmentType =
-  | "ASSIGNMENT"
-  | "UNIT_TEST"
-  | "MONTHLY_TEST"
-  | "QUARTERLY"
-  | "HALF_YEARLY"
-  | "PRE_FINAL"
-  | "FINAL"
-  | "PRACTICAL"
-  | "PROJECT";
+// "Assessments" — Subject Teacher conducted quizzes/competitions (Faculty
+// Subject Teacher module + Parent "Assessments" page). Class-scoped like
+// Assignment (not per-student) — a quiz/competition announcement for the
+// whole class-section, not an individual mark entry. See AcademicRecord
+// below for the separate, per-student "Academics"/exam-marks concept.
+export type AssessmentType = "QUIZ" | "COMPETITION" | "TEST" | "OTHER";
 
 export interface Assessment {
-  id: string;
+  id: string; // `${classSectionId}_${subjectId}_${date}` (mirrors Assignment)
   schoolId: string;
-  studentId: string;
   classSectionId: string;
-  subjectName: string;
-  examType: AssessmentType;
+  className?: string;
+  sectionName?: string;
+  subjectId: string;
+  subjectName?: string;
+  facultyUid: string;
+  date: string; // YYYY-MM-DD
+  title: string;
+  type: AssessmentType;
+  description?: string;
+  updatedAt: number | null;
+}
+
+// "Academics" — formal exam marks per student per subject (Parent
+// "Academics" page), entered by the Subject Teacher of that subject. Kept
+// separate from Assessment above since exam marks are per-student, not a
+// class-wide announcement.
+export interface AcademicRecord {
+  id: string; // `${studentId}_${subjectId}_${examName}`
+  schoolId: string;
+  classSectionId: string;
+  studentId: string;
+  subjectId: string;
+  subjectName?: string;
+  examName: string; // e.g. "Unit Test 1", "Half Yearly"
   marksObtained: number;
   totalMarks: number;
   grade?: string;
   remarks?: string;
-  facultyUid: string;
-  createdAt: number | null;
+  enteredByUid: string;
+  updatedAt: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -464,6 +484,9 @@ export interface LeaveRequest {
   toDate: string;
   reason: string;
   recipient: "PRINCIPAL" | "ADMIN" | "CLASS_TEACHER";
+  /** Who's applying — shown to the Class Teacher alongside their contact number. */
+  applicantRelation?: "FATHER" | "MOTHER" | "GUARDIAN";
+  applicantMobile?: string;
   status: RequestStatus;
   remark?: string;
   reviewedByUid?: string;
@@ -514,6 +537,10 @@ export interface Circular {
   title: string;
   message?: string;
   attachmentUrl?: string;
+  /** Set when this circular was auto-posted alongside a Holiday declaration
+   * (see app/admin/holidays) rather than authored directly — same collection,
+   * same rules, just a traceability pointer back to the holidays/{id} doc. */
+  relatedHolidayId?: string;
   postedByUid: string;
   createdAt: number | null;
 }
@@ -526,6 +553,7 @@ export interface SchoolEvent {
   time?: string;
   venue?: string;
   description?: string;
+  photoUrl?: string;
   createdByUid: string;
   createdAt: number | null;
 }
@@ -560,6 +588,8 @@ export interface TransportBus {
   areaCovered?: string;
   route?: string;
   boardingPoints: string[];
+  /** Default per-student fee for this bus — a student's actual paid status lives on Student.transport.feePaid. */
+  fee?: number;
   gpsTrackerId?: string;
   status: "ACTIVE" | "MAINTENANCE" | "INACTIVE";
 }
@@ -661,4 +691,18 @@ export interface StudentDocument {
   verificationStatus: RequestStatus;
   verifiedByUid?: string;
   uploadedAt: number | null;
+}
+
+// documentRequirements/{classSectionId} — which DocumentTypes the Class
+// Teacher (or Admin) has opened up for parents to upload for this section;
+// `documents` itself has no "is this type enabled" gate at the rules layer
+// (a parent can always upload for their own child) — this is a UI-level
+// checklist the Documents page reads to decide which upload buttons to show.
+export interface DocumentRequirement {
+  id: string; // == classSectionId
+  schoolId: string;
+  classSectionId: string;
+  enabledTypes: DocumentType[];
+  updatedByUid: string;
+  updatedAt: number | null;
 }

@@ -32,8 +32,11 @@ service firebase.storage {
       return isSignedIn() && myProfile().role == 'faculty' && myProfile().schoolId == schoolId;
     }
 
+    // Raised from 10MB — modern phone cameras routinely produce 10-15MB
+    // photos, and a profile-photo upload silently failing against a too-low
+    // cap looks exactly like a generic "Firebase error" to the user.
     function isReasonableUpload() {
-      return request.resource.size < 10 * 1024 * 1024;
+      return request.resource.size < 20 * 1024 * 1024;
     }
 
     // Student photos + documents (Aadhaar, birth cert, medical cert, etc.).
@@ -75,6 +78,12 @@ service firebase.storage {
     match /schools/{schoolId}/achievements/{allPaths=**} {
       allow read: if isSuperAdmin() || inSameSchool(schoolId);
       allow write: if isReasonableUpload() && (isAdminOfSchool(schoolId) || myProfile().role == 'faculty');
+    }
+
+    // Event photos — admin authored, school-wide read.
+    match /schools/{schoolId}/events/{allPaths=**} {
+      allow read: if isSuperAdmin() || inSameSchool(schoolId);
+      allow write: if isReasonableUpload() && isAdminOfSchool(schoolId);
     }
 
     // Deny everything else by default.

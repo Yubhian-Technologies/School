@@ -7,6 +7,7 @@ import {
   CalendarCheck,
   CalendarClock,
   CalendarDays,
+  CalendarOff,
   ClipboardCheck,
   ClipboardList,
   FileText,
@@ -61,6 +62,7 @@ export const ADMIN_NAV: NavGroup[] = [
       { label: "Subjects", href: "/admin/subjects", icon: Library },
       { label: "Faculty", href: "/admin/faculty", icon: Users },
       { label: "Timetable", href: "/admin/timetable", icon: CalendarClock },
+      { label: "Holidays", href: "/admin/holidays", icon: CalendarOff },
     ],
   },
   {

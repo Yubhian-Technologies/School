@@ -15,11 +15,11 @@ import {
   subscribeToAttendanceSummary,
   type AttendanceEntryInput,
 } from "@/lib/attendance";
-import { isSessionCancelled, subscribeToHoliday } from "@/lib/attendanceHolidays";
+import { isDefaultHoliday, isSessionCancelled, subscribeToHoliday } from "@/lib/holidays";
 import { subscribeToClassSectionForTeacher } from "@/lib/classSections";
 import { DEMO_CLASS_ID } from "@/lib/navigation";
 import { subscribeToStudentsForClass } from "@/lib/students";
-import type { AttendanceHoliday, AttendanceSession, AttendanceSummary, ClassSection, Student } from "@/lib/types";
+import type { AttendanceSession, AttendanceSummary, ClassSection, Holiday, Student } from "@/lib/types";
 
 interface RowState {
   present: boolean | null; // null = not marked yet
@@ -102,7 +102,7 @@ export default function TakeAttendancePage() {
   const [mySection, setMySection] = useState<ClassSection | null | undefined>(undefined);
   const [morningSummary, setMorningSummary] = useState<AttendanceSummary | null | undefined>(undefined);
   const [afternoonSummary, setAfternoonSummary] = useState<AttendanceSummary | null | undefined>(undefined);
-  const [holiday, setHoliday] = useState<AttendanceHoliday | null | undefined>(undefined);
+  const [holiday, setHoliday] = useState<Holiday | null | undefined>(undefined);
   const [students, setStudents] = useState<Student[] | null>(null);
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [searchTerm, setSearchTerm] = useState("");
@@ -131,17 +131,18 @@ export default function TakeAttendancePage() {
   }, [mySection, today]);
 
   useEffect(() => {
-    if (!mySection) return;
-    return subscribeToHoliday(mySection.id, today, setHoliday);
-  }, [mySection, today]);
+    if (!schoolId) return;
+    return subscribeToHoliday(schoolId, today, setHoliday);
+  }, [schoolId, today]);
 
   useEffect(() => {
     if (!schoolId || !mySection) return;
     return subscribeToStudentsForClass(schoolId, mySection.id, setStudents);
   }, [schoolId, mySection]);
 
-  const morningCancelled = isSessionCancelled(holiday, "MORNING");
-  const afternoonCancelled = isSessionCancelled(holiday, "AFTERNOON");
+  const holidayReason = holiday?.reason ?? (isDefaultHoliday(today) ? "Sunday" : undefined);
+  const morningCancelled = isSessionCancelled(today, holiday, "MORNING");
+  const afternoonCancelled = isSessionCancelled(today, holiday, "AFTERNOON");
   const morningResolved = Boolean(morningSummary) || morningCancelled;
   const afternoonResolved = Boolean(afternoonSummary) || afternoonCancelled;
 
@@ -261,8 +262,8 @@ export default function TakeAttendancePage() {
         </h1>
         <div className="mt-6 rounded-xl border border-gray-200 bg-white p-16 text-center shadow-sm">
           <p className="text-sm text-gray-500">
-            {holiday?.type === "FULL_DAY"
-              ? "Today is marked a holiday — no attendance is required."
+            {morningCancelled && afternoonCancelled
+              ? `Today is a holiday${holidayReason ? ` — ${holidayReason}` : ""} — no attendance is required.`
               : "Both Morning and Afternoon are already resolved for today (submitted or cancelled) and can't be changed."}
           </p>
           <Link
@@ -332,8 +333,8 @@ export default function TakeAttendancePage() {
           <CalendarOff className="mx-auto h-8 w-8 text-amber-600" />
           <p className="mt-2 text-sm text-gray-700">
             {SESSION_LABEL[selectedSession]} is cancelled today
-            {holiday?.reason ? ` — ${holiday.reason}` : ""}. No attendance is required for this
-            session.
+            {holidayReason ? ` — ${holidayReason}` : ""}. No attendance is required for this
+            session. Declared by your school&apos;s Admin under Holidays.
           </p>
         </div>
       ) : sessionAlreadySubmitted && selectedSummary ? (
