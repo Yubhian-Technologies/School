@@ -309,10 +309,15 @@ export interface Student {
 
 // Morning and Afternoon attendance are taken (and saved) as two independent
 // events — a teacher may submit Morning at the start of the day and
-// Afternoon only later — so each half of the day is its own immutable
-// record/summary, keyed by session, rather than one combined per-day doc
-// that would need to be updated later (which firestore.rules deliberately
-// never allows — see the "one submission per class per day" note below).
+// Afternoon only later — so each half of the day is its own record/summary,
+// keyed by session, rather than one combined per-day doc. The real Class
+// Teacher of the section may also come back and EDIT a past date's session
+// (firestore.rules allows update, not just create, for both collections
+// below) — `updatedAt` is stamped whenever that happens, alongside the
+// original `createdAt`/`submittedAt`, so an edited record is distinguishable
+// from an untouched one. Delete is still never allowed for either
+// collection — see the "one submission per class per day per session,
+// editable but never deletable" note below.
 export type AttendanceSession = "MORNING" | "AFTERNOON";
 
 export interface AttendanceRecord {
@@ -325,18 +330,22 @@ export interface AttendanceRecord {
   present: boolean;
   remark?: string;
   markedByUid: string;
+  createdAt: number | null;
+  /** Set only when this record has been edited after its original submission. */
+  updatedAt?: number | null;
 }
 
-// attendanceSummaries/{classSectionId}_{date}_{session} — one immutable doc
-// per class, per calendar date, per session, written atomically alongside
-// that session's attendance/{studentId}_{date}_{session} docs in a single
+// attendanceSummaries/{classSectionId}_{date}_{session} — one doc per class,
+// per calendar date, per session, written atomically alongside that
+// session's attendance/{studentId}_{date}_{session} docs in a single
 // writeBatch (see lib/attendance.ts submitSessionAttendance). Exists so the
 // Dashboard/History can answer "has this session been taken?" and list past
-// dates without reading every student's individual record, and so
-// firestore.rules has a single doc to make immutable as the "one submission
-// per class per day per session" lock. Never read by parents — their own
-// summary is computed client-side from their child's own attendance/{id}
-// docs only.
+// dates without reading every student's individual record. Never read by
+// parents — their own summary is computed client-side from their child's
+// own attendance/{id} docs only. Create AND update are allowed for the real
+// Class Teacher of that section (see firestore.rules) — delete never is, so
+// "resolved" always means "has a doc", whether freshly created or since
+// edited.
 export interface AttendanceSummary {
   id: string; // `${classSectionId}_${date}_${session}`
   schoolId: string;
@@ -345,6 +354,8 @@ export interface AttendanceSummary {
   session: AttendanceSession;
   teacherUid: string;
   submittedAt: number | null;
+  /** Set only when this summary has been edited after its original submission. */
+  updatedAt?: number | null;
   totalStudents: number;
   presentCount: number;
   absentCount: number;
@@ -396,6 +407,14 @@ export interface Assignment {
   updatedAt: number | null;
 }
 
+// Soft-deleted (never removed from Firestore) so historical stats — Total
+// Achievements / Achievements This Term on the Class Teacher dashboard — can
+// keep counting a record after it's "deleted" from the active list. Active
+// views (the Achievements table, Section Highlights, the Parent dashboard)
+// all filter on isDeleted == false; only the two historical cards read the
+// full, unfiltered set. academicYear/term are stamped at creation time
+// (lib/achievements.ts's getCurrentTerm/getCurrentAcademicYear) so a record's
+// historical bucket never shifts retroactively as the calendar moves on.
 export interface Achievement {
   id: string;
   schoolId: string;
@@ -409,6 +428,12 @@ export interface Achievement {
   photoUrl?: string;
   certificateUrl?: string;
   createdByUid: string;
+  academicYear: string;
+  term: string;
+  isDeleted: boolean;
+  deletedAt: number | null;
+  createdAt: number | null;
+  updatedAt: number | null;
 }
 
 // "Assessments" — Subject Teacher conducted quizzes/competitions (Faculty
@@ -460,18 +485,68 @@ export interface AcademicRecord {
 
 export type RequestStatus = "pending" | "approved" | "rejected";
 
+// ParentRequest — a general help-desk ticket a parent raises against their
+// child's Class Teacher (Leave/Academic/Attendance/Fee/Transport/Meeting/
+// Other), reviewed and responded to via a per-request reply thread. Distinct
+// from LeaveRequest below (a separate, purpose-built module/collection —
+// this "LEAVE" type value is just a category label here, not wired to it).
+// Uses its own status enum (not RequestStatus above, which LeaveRequest
+// still owns) since the review workflow here is Pending -> In Progress ->
+// Resolved, not an approve/reject decision.
+export type ParentRequestType =
+  | "LEAVE"
+  | "ACADEMIC"
+  | "ATTENDANCE"
+  | "FEE"
+  | "TRANSPORT"
+  | "MEETING"
+  | "OTHER";
+
+export type ParentRequestStatus = "pending" | "in_progress" | "resolved";
+
+export interface ParentRequestAttachment {
+  name: string;
+  url: string;
+  size: number;
+}
+
 export interface ParentRequest {
   id: string;
   schoolId: string;
-  studentId: string;
   classSectionId: string;
+  studentId: string;
+  studentName: string;
+  admissionNo: string;
+  rollNo: string;
+  className: string;
+  sectionName: string;
   parentUid: string;
-  type: "ADDRESS" | "MOBILE" | "GUARDIAN_INFO" | "MEDICAL_INFO" | "PHOTO";
-  payload: Record<string, unknown>;
-  status: RequestStatus;
-  remark?: string;
+  parentName: string;
+  parentRelation: string;
+  parentPhone?: string;
+  parentEmail?: string;
+  type: ParentRequestType;
+  subject: string;
+  description: string;
+  status: ParentRequestStatus;
+  attachments?: ParentRequestAttachment[];
   reviewedByUid?: string;
   createdAt: number | null;
+  updatedAt: number | null;
+}
+
+// parentRequests/{id}/replies/{replyId} — the "Conversation Timeline" on a
+// request's detail panel. The request's own `description` above renders as
+// the first bubble (not duplicated into a reply doc); every reply after that
+// (parent or faculty) lives here, plus an auto-posted "system" entry each
+// time the Class Teacher changes `status`.
+export interface ParentRequestReply {
+  id: string;
+  senderUid: string;
+  senderName: string;
+  senderRole: "parent" | "faculty" | "system";
+  text: string;
+  sentAt: number | null;
 }
 
 export interface LeaveRequest {

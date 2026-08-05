@@ -99,6 +99,45 @@ service firebase.storage {
       allow read: if isStaffAuthoredCategory(category) && (isSuperAdmin() || inSameSchool(schoolId));
       allow write: if isStaffAuthoredCategory(category) && isReasonableUpload() &&
         (isAdminOfSchool(schoolId) || isFacultyOfSchool(schoolId));
+    // Circulars (image/PDF) and timetable Excel uploads — admin authored, school-wide read
+    match /schools/{schoolId}/circulars/{allPaths=**} {
+      allow read: if isSuperAdmin() || inSameSchool(schoolId);
+      allow write: if isReasonableUpload() && isAdminOfSchool(schoolId);
+    }
+
+    match /schools/{schoolId}/timetables/{allPaths=**} {
+      allow read: if isSuperAdmin() || inSameSchool(schoolId);
+      allow write: if isReasonableUpload() && isAdminOfSchool(schoolId);
+    }
+
+    // Assignment/achievement attachments — faculty-authored, school-wide read within tenant
+    match /schools/{schoolId}/assignments/{allPaths=**} {
+      allow read: if isSuperAdmin() || inSameSchool(schoolId);
+      allow write: if isReasonableUpload() && (isAdminOfSchool(schoolId) || myProfile().role == 'faculty');
+    }
+
+    match /schools/{schoolId}/achievements/{allPaths=**} {
+      allow read: if isSuperAdmin() || inSameSchool(schoolId);
+      allow write: if isReasonableUpload() && (isAdminOfSchool(schoolId) || myProfile().role == 'faculty');
+    }
+
+    // Parent Request attachments (e.g. a medical certificate on a leave
+    // request) — either side of the conversation may attach a file, same
+    // school-wide-read pattern as assignments/achievements above (not
+    // per-doc-owner scoped, matching those two precedents rather than the
+    // heavier isGuardianOfStudent check students/{..} uses).
+    match /schools/{schoolId}/parentRequests/{allPaths=**} {
+      allow read: if isSuperAdmin() || inSameSchool(schoolId);
+      allow write: if isReasonableUpload() && (
+        isAdminOfSchool(schoolId) || isFacultyOfSchool(schoolId) ||
+        (isSignedIn() && myProfile().role == 'parent' && myProfile().schoolId == schoolId)
+      );
+    }
+
+    // Event photos — admin authored, school-wide read.
+    match /schools/{schoolId}/events/{allPaths=**} {
+      allow read: if isSuperAdmin() || inSameSchool(schoolId);
+      allow write: if isReasonableUpload() && isAdminOfSchool(schoolId);
     }
 
     // Deny everything else by default.

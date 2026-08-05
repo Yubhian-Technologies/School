@@ -2,16 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { CalendarOff, CheckCircle2, Sun, Sunset, Users, XCircle } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { CalendarOff, CheckCircle2, Pencil, Sun, Sunset, Users, XCircle } from "lucide-react";
 import Modal from "@/components/Modal";
 import StatCard from "@/components/StatCard";
 import { ToastStack, useToastStack } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import {
-  computeSessionAttendancePercent,
   getTodayDateString,
   submitSessionAttendance,
+  subscribeToAttendanceRecordsForDate,
   subscribeToAttendanceSummary,
   type AttendanceEntryInput,
 } from "@/lib/attendance";
@@ -19,7 +19,14 @@ import { isDefaultHoliday, isSessionCancelled, subscribeToHoliday } from "@/lib/
 import { subscribeToClassSectionForTeacher } from "@/lib/classSections";
 import { DEMO_CLASS_ID } from "@/lib/navigation";
 import { subscribeToStudentsForClass } from "@/lib/students";
-import type { AttendanceSession, AttendanceSummary, ClassSection, Holiday, Student } from "@/lib/types";
+import type {
+  AttendanceRecord,
+  AttendanceSession,
+  AttendanceSummary,
+  ClassSection,
+  Holiday,
+  Student,
+} from "@/lib/types";
 
 interface RowState {
   present: boolean | null; // null = not marked yet
@@ -33,6 +40,15 @@ const SESSION_LABEL: Record<AttendanceSession, string> = {
   MORNING: "Morning Attendance",
   AFTERNOON: "Afternoon Attendance",
 };
+
+function formatDateLong(dateStr: string) {
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    weekday: "long",
+  });
+}
 
 function SessionTab({
   session,
@@ -89,14 +105,19 @@ function StudentAvatar({ student }: { student: Student }) {
 
 export default function TakeAttendancePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { profile, user } = useAuth();
   const schoolId = profile?.schoolId ?? null;
   const today = getTodayDateString();
-  const todayLabel = new Date(`${today}T00:00:00`).toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    weekday: "long",
+
+  // Pre-selects a date passed in from the History list's "Edit" link
+  // (?date=YYYY-MM-DD); future dates are never legitimate (attendance can't
+  // be taken ahead of time) so any bogus/future value falls back to today —
+  // defense in depth alongside the <input type="date" max={today}> below,
+  // which only stops the picker UI itself, not a hand-edited URL.
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const fromQuery = searchParams.get("date");
+    return fromQuery && fromQuery <= today ? fromQuery : today;
   });
 
   const [mySection, setMySection] = useState<ClassSection | null | undefined>(undefined);
@@ -104,13 +125,20 @@ export default function TakeAttendancePage() {
   const [afternoonSummary, setAfternoonSummary] = useState<AttendanceSummary | null | undefined>(undefined);
   const [holiday, setHoliday] = useState<Holiday | null | undefined>(undefined);
   const [students, setStudents] = useState<Student[] | null>(null);
+  // Tagged with the date it was fetched for, so the pre-fill effect below
+  // can tell "records for the date I just switched to haven't arrived yet"
+  // apart from "records for the previous date, about to be replaced" —
+  // otherwise a stale snapshot could briefly pre-fill the wrong date's data.
+  const [recordsForDate, setRecordsForDate] = useState<{ date: string; records: AttendanceRecord[] } | null>(
+    null
+  );
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  // null = no explicit tab click yet — the effective tab then follows
-  // whichever session hasn't been submitted (computed below), so it
-  // auto-advances from Morning to Afternoon the moment Morning is saved.
+  // null = no explicit tab click yet — the effective tab then follows a
+  // sensible default (computed below), so it starts on whichever session
+  // isn't cancelled.
   const [userSession, setUserSession] = useState<AttendanceSession | null>(null);
 
   const { toasts, show, dismiss } = useToastStack();
@@ -122,37 +150,68 @@ export default function TakeAttendancePage() {
 
   useEffect(() => {
     if (!mySection) return;
-    return subscribeToAttendanceSummary(mySection.id, today, "MORNING", setMorningSummary);
-  }, [mySection, today]);
+    return subscribeToAttendanceSummary(mySection.id, selectedDate, "MORNING", setMorningSummary);
+  }, [mySection, selectedDate]);
 
   useEffect(() => {
     if (!mySection) return;
-    return subscribeToAttendanceSummary(mySection.id, today, "AFTERNOON", setAfternoonSummary);
-  }, [mySection, today]);
+    return subscribeToAttendanceSummary(mySection.id, selectedDate, "AFTERNOON", setAfternoonSummary);
+  }, [mySection, selectedDate]);
 
   useEffect(() => {
     if (!schoolId) return;
-    return subscribeToHoliday(schoolId, today, setHoliday);
-  }, [schoolId, today]);
+    return subscribeToHoliday(schoolId, selectedDate, setHoliday);
+  }, [schoolId, selectedDate]);
 
   useEffect(() => {
     if (!schoolId || !mySection) return;
     return subscribeToStudentsForClass(schoolId, mySection.id, setStudents);
   }, [schoolId, mySection]);
 
-  const holidayReason = holiday?.reason ?? (isDefaultHoliday(today) ? "Sunday" : undefined);
-  const morningCancelled = isSessionCancelled(today, holiday, "MORNING");
-  const afternoonCancelled = isSessionCancelled(today, holiday, "AFTERNOON");
-  const morningResolved = Boolean(morningSummary) || morningCancelled;
-  const afternoonResolved = Boolean(afternoonSummary) || afternoonCancelled;
+  useEffect(() => {
+    if (!mySection) return;
+    return subscribeToAttendanceRecordsForDate(mySection.schoolId, mySection.id, selectedDate, (records) =>
+      setRecordsForDate({ date: selectedDate, records })
+    );
+  }, [mySection, selectedDate]);
 
-  // Lands on whichever session hasn't been submitted/cancelled yet, unless
-  // the teacher explicitly clicked a tab (userSession overrides the default).
-  const selectedSession: AttendanceSession = userSession ?? (morningResolved ? "AFTERNOON" : "MORNING");
+  const holidayReason = holiday?.reason ?? (isDefaultHoliday(selectedDate) ? "Sunday" : undefined);
+  const morningCancelled = isSessionCancelled(selectedDate, holiday, "MORNING");
+  const afternoonCancelled = isSessionCancelled(selectedDate, holiday, "AFTERNOON");
+
+  // Lands on whichever session isn't cancelled, unless the teacher
+  // explicitly clicked a tab. Being already-submitted no longer skips a
+  // session by default — it's editable, not locked, so landing there to
+  // review/edit it is a perfectly normal default.
+  const selectedSession: AttendanceSession = userSession ?? (morningCancelled ? "AFTERNOON" : "MORNING");
 
   function selectSession(session: AttendanceSession) {
     setUserSession(session);
-    setRows({});
+  }
+
+  function changeDate(date: string) {
+    setSelectedDate(date);
+    setUserSession(null);
+  }
+
+  // Pre-fills `rows` from the existing attendance records the moment a
+  // (date, session) that hasn't been seeded yet has its records loaded —
+  // keyed so it seeds exactly once per (date, session), not on every
+  // subsequent snapshot update, which would otherwise clobber whatever the
+  // teacher is actively typing. Adjusted during render (React's documented
+  // pattern for "reset/derive state when a dependency changes") rather than
+  // in a useEffect, which would call setState synchronously inside the
+  // effect body.
+  const [seededKey, setSeededKey] = useState<string | null>(null);
+  const currentKey = `${selectedDate}_${selectedSession}`;
+  if (seededKey !== currentKey && recordsForDate && recordsForDate.date === selectedDate) {
+    setSeededKey(currentKey);
+    const seeded: Record<string, RowState> = {};
+    for (const r of recordsForDate.records) {
+      if (r.session !== selectedSession) continue;
+      seeded[r.studentId] = { present: r.present, remark: r.remark ?? "" };
+    }
+    setRows(seeded);
   }
 
   function setPresent(studentId: string, present: boolean) {
@@ -191,10 +250,9 @@ export default function TakeAttendancePage() {
 
   const selectedSummary = selectedSession === "MORNING" ? morningSummary : afternoonSummary;
   const selectedCancelled = selectedSession === "MORNING" ? morningCancelled : afternoonCancelled;
-  const sessionAlreadySubmitted = Boolean(selectedSummary);
-  const sessionResolved = sessionAlreadySubmitted || selectedCancelled;
-  const canSubmit = !sessionResolved && activeStudents.length > 0 && totals.unset === 0;
-  const bothResolved = morningResolved && afternoonResolved;
+  const isEditingSelected = Boolean(selectedSummary);
+  const canSubmit = !selectedCancelled && activeStudents.length > 0 && totals.unset === 0;
+  const bothCancelled = morningCancelled && afternoonCancelled;
 
   async function handleConfirmSubmit() {
     if (!schoolId || !mySection || !user) return;
@@ -208,16 +266,23 @@ export default function TakeAttendancePage() {
       await submitSessionAttendance({
         schoolId,
         classSectionId: mySection.id,
-        date: today,
+        date: selectedDate,
         session: selectedSession,
         teacherUid: user.uid,
         entries,
       });
-      show(`${SESSION_LABEL[selectedSession]} submitted.`);
+      show(`${SESSION_LABEL[selectedSession]} ${isEditingSelected ? "updated" : "submitted"}.`);
       setConfirmOpen(false);
-      if (selectedSession === "MORNING" && !afternoonResolved) {
-        setUserSession(null);
-        setRows({});
+      // Auto-advance to Afternoon only for the common "taking today's
+      // attendance fresh" flow, where Afternoon hasn't been touched at all
+      // yet — an edit to an already-fully-recorded date just returns to the
+      // dashboard instead of forcing a revisit of the other session.
+      const afternoonUntouched = !afternoonSummary && !afternoonCancelled;
+      if (selectedSession === "MORNING" && afternoonUntouched) {
+        // Switching the tab changes currentKey, which the render-time
+        // seeding check above picks up on its own — no afternoon records
+        // exist yet, so it naturally seeds an empty rows for the new key.
+        setUserSession("AFTERNOON");
       } else {
         router.replace(`/faculty/class/${DEMO_CLASS_ID}/attendance`);
       }
@@ -225,7 +290,7 @@ export default function TakeAttendancePage() {
       show(
         err instanceof Error
           ? err.message
-          : "Could not submit attendance — it may already have been taken for this session.",
+          : "Could not save attendance. Please try again.",
         "error"
       );
       setConfirmOpen(false);
@@ -254,7 +319,7 @@ export default function TakeAttendancePage() {
     );
   }
 
-  if (bothResolved) {
+  if (bothCancelled) {
     return (
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-gray-900">
@@ -262,9 +327,8 @@ export default function TakeAttendancePage() {
         </h1>
         <div className="mt-6 rounded-xl border border-gray-200 bg-white p-16 text-center shadow-sm">
           <p className="text-sm text-gray-500">
-            {morningCancelled && afternoonCancelled
-              ? `Today is a holiday${holidayReason ? ` — ${holidayReason}` : ""} — no attendance is required.`
-              : "Both Morning and Afternoon are already resolved for today (submitted or cancelled) and can't be changed."}
+            {formatDateLong(selectedDate)} is a holiday{holidayReason ? ` — ${holidayReason}` : ""} — no
+            attendance is required.
           </p>
           <Link
             href={`/faculty/class/${DEMO_CLASS_ID}/attendance`}
@@ -293,23 +357,29 @@ export default function TakeAttendancePage() {
           <p className="text-sm text-gray-500">Attendance · Morning &amp; Afternoon Attendance</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700">
-            {todayLabel}
-          </div>
+          <input
+            type="date"
+            value={selectedDate}
+            max={today}
+            onChange={(e) => e.target.value && changeDate(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
           <div className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700">
             {mySection.className} - {mySection.sectionName}
           </div>
-          {!sessionResolved && (
+          {!selectedCancelled && (
             <button
               onClick={() => setConfirmOpen(true)}
               disabled={!canSubmit}
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:opacity-40"
             >
-              Save {SESSION_LABEL[selectedSession]}
+              {isEditingSelected ? "Update" : "Save"} {SESSION_LABEL[selectedSession]}
             </button>
           )}
         </div>
       </div>
+
+      <p className="mt-2 text-sm font-medium text-gray-600">{formatDateLong(selectedDate)}</p>
 
       <div className="mt-6 flex gap-2 border-b border-gray-200">
         <SessionTab
@@ -332,22 +402,20 @@ export default function TakeAttendancePage() {
         <div className="mt-6 rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
           <CalendarOff className="mx-auto h-8 w-8 text-amber-600" />
           <p className="mt-2 text-sm text-gray-700">
-            {SESSION_LABEL[selectedSession]} is cancelled today
+            {SESSION_LABEL[selectedSession]} is cancelled on {formatDateLong(selectedDate)}
             {holidayReason ? ` — ${holidayReason}` : ""}. No attendance is required for this
             session. Declared by your school&apos;s Admin under Holidays.
           </p>
         </div>
-      ) : sessionAlreadySubmitted && selectedSummary ? (
-        <div className="mt-6 rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
-          <CheckCircle2 className="mx-auto h-8 w-8 text-green-600" />
-          <p className="mt-2 text-sm text-gray-700">
-            {SESSION_LABEL[selectedSession]} was already submitted today —{" "}
-            {selectedSummary.presentCount} present, {selectedSummary.absentCount} absent (
-            {computeSessionAttendancePercent(selectedSummary)}%). It can&apos;t be changed.
-          </p>
-        </div>
       ) : (
         <>
+          {isEditingSelected && (
+            <div className="mt-4 flex items-center gap-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
+              <Pencil className="h-4 w-4 shrink-0" />
+              Editing an already-submitted record{selectedSummary?.updatedAt ? " — previously edited before" : ""}. Saving will overwrite it.
+            </div>
+          )}
+
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatCard icon={Users} label="Total Students" value={activeStudents.length} color="indigo" />
             <StatCard icon={CheckCircle2} label="Present" value={totals.present} color="green" />
@@ -433,24 +501,31 @@ export default function TakeAttendancePage() {
           </div>
 
           <p className="mt-3 text-xs text-gray-400">
-            Don&apos;t forget to click Save {SESSION_LABEL[selectedSession]} after marking. This cannot be
-            changed once submitted.
+            Don&apos;t forget to click {isEditingSelected ? "Update" : "Save"} {SESSION_LABEL[selectedSession]}{" "}
+            after marking. You can come back and edit this later from the History list.
           </p>
         </>
       )}
 
       {confirmOpen && (
         <Modal
-          title={`Submit ${SESSION_LABEL[selectedSession]}?`}
+          title={`${isEditingSelected ? "Update" : "Submit"} ${SESSION_LABEL[selectedSession]}?`}
           onClose={() => (submitting ? null : setConfirmOpen(false))}
+          maxWidthClassName="max-w-md"
+          maxHeightClassName="max-h-[90vh]"
+          overlayPaddingClassName="px-4"
+          dialogDecorationClassName="rounded-2xl border border-gray-200 shadow-lg"
+          overlayPositionClassName="inset-0"
         >
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
               Present: <span className="font-semibold text-gray-900">{totals.present}</span> · Absent:{" "}
               <span className="font-semibold text-gray-900">{totals.absent}</span>
             </p>
-            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              This cannot be changed once submitted.
+            <p className="rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-900">
+              {isEditingSelected
+                ? `This will overwrite the existing ${SESSION_LABEL[selectedSession].toLowerCase()} record for ${formatDateLong(selectedDate)}.`
+                : "You can come back and edit this later from the History list."}
             </p>
             <div className="flex gap-3">
               <button
@@ -465,7 +540,7 @@ export default function TakeAttendancePage() {
                 disabled={submitting}
                 className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:opacity-60"
               >
-                {submitting ? "Submitting…" : "Confirm & Submit"}
+                {submitting ? "Saving…" : "Confirm & Save"}
               </button>
             </div>
           </div>

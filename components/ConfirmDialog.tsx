@@ -22,7 +22,15 @@ export default function ConfirmDialog({
   onCancel: () => void;
 }) {
   return (
-    <Modal title={title} onClose={onCancel} maxWidthClassName="max-w-sm">
+    <Modal
+      title={title}
+      onClose={onCancel}
+      maxWidthClassName="max-w-sm"
+      maxHeightClassName="max-h-[90vh]"
+      overlayPaddingClassName="px-4"
+      dialogDecorationClassName="rounded-2xl border border-gray-200 shadow-lg"
+      overlayPositionClassName="inset-0"
+    >
       <div className="space-y-4">
         <p className="text-sm text-gray-600">{message}</p>
         <div className="flex gap-3">

@@ -123,7 +123,7 @@ export default function FacultySubjectAssignments({
   }
 
   return (
-    <Modal title={`Subjects & Classes — ${faculty.name}`} onClose={onClose} maxWidthClassName="max-w-lg">
+    <Modal title={`Subjects & Classes — ${faculty.name}`} onClose={onClose}>
       <p className="text-sm text-gray-500">
         Assign the classes and subjects this faculty member teaches. This drives what shows up on their
         Faculty Dashboard, and which classes they can post Classwork/Homework for.
