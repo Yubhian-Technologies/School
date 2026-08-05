@@ -329,32 +329,45 @@ service cloud.firestore {
         isAnyTeacherOf(resource.data.classSectionId) ||
         isGuardianOf(resource.data.studentId);
 
-      // Only the real Class Teacher of this class-section may create —
-      // Admin dropped from create (Admin is read-only reporting per the
-      // Attendance spec) and Subject Teachers already excluded
-      // (isClassTeacherOf, not isAnyTeacherOf). No update/delete for anyone,
-      // ever: previous attendance can never be modified. Because Firestore's
-      // create-vs-update branch is decided by whether the doc id already
-      // existed (not by which client method was called), a resubmit attempt
-      // on the same studentId_date via setDoc() is evaluated as `update` and
-      // denied here — this is what makes "only once per class per day"
-      // actually enforced server-side, not just a client-side check. Note:
-      // this does NOT verify request.resource.data.date is actually today —
-      // see CLAUDE.md "Known debts" for why that's deliberately left as an
-      // application-level check only.
+      // Only the real Class Teacher of this class-section may create or
+      // edit — Admin dropped from both (Admin is read-only reporting per
+      // the Attendance spec) and Subject Teachers already excluded
+      // (isClassTeacherOf, not isAnyTeacherOf). `update` is now allowed
+      // (previously `if false` — "attendance can never be edited" was a
+      // deliberate earlier guarantee, deliberately loosened so a Class
+      // Teacher can go back and correct a past date, per lib/attendance.ts
+      // submitSessionAttendance's upsert). `delete` stays disallowed either
+      // way — a submitted/edited record can be corrected, never removed.
+      // `update` checks isClassTeacherOf against `resource.data` (the
+      // EXISTING doc), not `request.resource.data` — matching the
+      // create/update/delete split used throughout this file (e.g.
+      // students/{id} above): resource.data is immutable to the caller
+      // within this request, so this can't be tricked by also trying to
+      // change classSectionId to one the caller doesn't actually teach.
+      // Note: neither `create` nor `update` verify
+      // request.resource.data.date is actually today or in the past — see
+      // CLAUDE.md "Known debts" for why that's deliberately left as an
+      // application-level check only; that debt doesn't change shape here,
+      // since a modified client could already submit an arbitrary date once
+      // before this change — it can now also edit whatever date it already
+      // wrote, which is the legitimate use case this unlocks anyway.
       allow create: if isClassTeacherOf(request.resource.data.classSectionId) &&
         request.resource.data.markedByUid == request.auth.uid;
 
-      allow update, delete: if false;
+      allow update: if isClassTeacherOf(resource.data.classSectionId) &&
+        request.resource.data.markedByUid == request.auth.uid;
+
+      allow delete: if false;
     }
 
     // -----------------------------------------------------------------------
     // attendanceSummaries/{classSectionId_date}
     // -----------------------------------------------------------------------
-    // One immutable doc per class per date — see lib/types.ts AttendanceSummary
-    // for why this exists alongside attendance/{id}. Never read by parents;
-    // they read their own child's attendance/{id} docs directly via
-    // isGuardianOf above.
+    // One doc per class per date per session, editable (not deletable) by
+    // the real Class Teacher — see lib/types.ts AttendanceSummary for why
+    // this exists alongside attendance/{id}. Never read by parents; they
+    // read their own child's attendance/{id} docs directly via isGuardianOf
+    // above.
 
     // Parsed from the doc id (not read off resource.data) so a direct get()
     // on a NOT-YET-EXISTING summary doc (the Dashboard's "today" check, true
@@ -378,10 +391,17 @@ service cloud.firestore {
         isAdminOfSchool(classSectionDoc(summaryClassSectionId(id)).data.schoolId) ||
         isAnyTeacherOf(summaryClassSectionId(id));
 
+      // Same loosening as attendance/{id} above, same reasoning: `update`
+      // now allowed for the real Class Teacher (checked against the
+      // EXISTING doc's classSectionId via resource.data), `delete` stays
+      // disallowed — see the longer comment on attendance/{id}.
       allow create: if isClassTeacherOf(request.resource.data.classSectionId) &&
         request.resource.data.teacherUid == request.auth.uid;
 
-      allow update, delete: if false;
+      allow update: if isClassTeacherOf(resource.data.classSectionId) &&
+        request.resource.data.teacherUid == request.auth.uid;
+
+      allow delete: if false;
     }
 
     // -----------------------------------------------------------------------

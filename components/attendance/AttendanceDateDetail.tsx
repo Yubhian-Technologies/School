@@ -48,20 +48,38 @@ function SessionBadge({ record }: { record: AttendanceRecord | undefined }) {
   );
 }
 
-export default function AttendanceDateDetail({ date }: { date: string }) {
+export default function AttendanceDateDetail({
+  date,
+  section: providedSection,
+  backHref,
+}: {
+  date: string;
+  /** When provided (e.g. Admin's Class → Section picker), this section is
+   * used directly and the component never tries to self-resolve "my own
+   * class" — that resolution only makes sense for a Faculty Class Teacher
+   * viewing their own section. */
+  section?: ClassSection;
+  /** Defaults to the Faculty attendance dashboard — Admin passes its own
+   * attendance page here instead. */
+  backHref?: string;
+}) {
   const { profile, user } = useAuth();
   const schoolId = profile?.schoolId ?? null;
 
-  const [mySection, setMySection] = useState<ClassSection | null | undefined>(undefined);
+  const [resolvedSection, setResolvedSection] = useState<ClassSection | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (providedSection) return;
+    if (!schoolId || !user) return;
+    return subscribeToClassSectionForTeacher(schoolId, user.uid, setResolvedSection);
+  }, [schoolId, user, providedSection]);
+
+  const mySection = providedSection ?? resolvedSection;
+  const backLink = backHref ?? `/faculty/class/${DEMO_CLASS_ID}/attendance`;
   const [morningSummary, setMorningSummary] = useState<AttendanceSummary | null | undefined>(undefined);
   const [afternoonSummary, setAfternoonSummary] = useState<AttendanceSummary | null | undefined>(undefined);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
-
-  useEffect(() => {
-    if (!schoolId || !user) return;
-    return subscribeToClassSectionForTeacher(schoolId, user.uid, setMySection);
-  }, [schoolId, user]);
 
   useEffect(() => {
     if (!mySection) return;
@@ -75,7 +93,7 @@ export default function AttendanceDateDetail({ date }: { date: string }) {
 
   useEffect(() => {
     if (!mySection) return;
-    return subscribeToAttendanceRecordsForDate(mySection.id, date, setRecords);
+    return subscribeToAttendanceRecordsForDate(mySection.schoolId, mySection.id, date, setRecords);
   }, [mySection, date]);
 
   useEffect(() => {
@@ -120,10 +138,7 @@ export default function AttendanceDateDetail({ date }: { date: string }) {
 
   return (
     <div>
-      <Link
-        href={`/faculty/class/${DEMO_CLASS_ID}/attendance`}
-        className="text-sm text-indigo-600 hover:text-indigo-500"
-      >
+      <Link href={backLink} className="text-sm text-indigo-600 hover:text-indigo-500">
         ← Attendance
       </Link>
       <div className="mt-1">

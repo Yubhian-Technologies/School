@@ -309,10 +309,15 @@ export interface Student {
 
 // Morning and Afternoon attendance are taken (and saved) as two independent
 // events — a teacher may submit Morning at the start of the day and
-// Afternoon only later — so each half of the day is its own immutable
-// record/summary, keyed by session, rather than one combined per-day doc
-// that would need to be updated later (which firestore.rules deliberately
-// never allows — see the "one submission per class per day" note below).
+// Afternoon only later — so each half of the day is its own record/summary,
+// keyed by session, rather than one combined per-day doc. The real Class
+// Teacher of the section may also come back and EDIT a past date's session
+// (firestore.rules allows update, not just create, for both collections
+// below) — `updatedAt` is stamped whenever that happens, alongside the
+// original `createdAt`/`submittedAt`, so an edited record is distinguishable
+// from an untouched one. Delete is still never allowed for either
+// collection — see the "one submission per class per day per session,
+// editable but never deletable" note below.
 export type AttendanceSession = "MORNING" | "AFTERNOON";
 
 export interface AttendanceRecord {
@@ -325,18 +330,22 @@ export interface AttendanceRecord {
   present: boolean;
   remark?: string;
   markedByUid: string;
+  createdAt: number | null;
+  /** Set only when this record has been edited after its original submission. */
+  updatedAt?: number | null;
 }
 
-// attendanceSummaries/{classSectionId}_{date}_{session} — one immutable doc
-// per class, per calendar date, per session, written atomically alongside
-// that session's attendance/{studentId}_{date}_{session} docs in a single
+// attendanceSummaries/{classSectionId}_{date}_{session} — one doc per class,
+// per calendar date, per session, written atomically alongside that
+// session's attendance/{studentId}_{date}_{session} docs in a single
 // writeBatch (see lib/attendance.ts submitSessionAttendance). Exists so the
 // Dashboard/History can answer "has this session been taken?" and list past
-// dates without reading every student's individual record, and so
-// firestore.rules has a single doc to make immutable as the "one submission
-// per class per day per session" lock. Never read by parents — their own
-// summary is computed client-side from their child's own attendance/{id}
-// docs only.
+// dates without reading every student's individual record. Never read by
+// parents — their own summary is computed client-side from their child's
+// own attendance/{id} docs only. Create AND update are allowed for the real
+// Class Teacher of that section (see firestore.rules) — delete never is, so
+// "resolved" always means "has a doc", whether freshly created or since
+// edited.
 export interface AttendanceSummary {
   id: string; // `${classSectionId}_${date}_${session}`
   schoolId: string;
@@ -345,6 +354,8 @@ export interface AttendanceSummary {
   session: AttendanceSession;
   teacherUid: string;
   submittedAt: number | null;
+  /** Set only when this summary has been edited after its original submission. */
+  updatedAt?: number | null;
   totalStudents: number;
   presentCount: number;
   absentCount: number;

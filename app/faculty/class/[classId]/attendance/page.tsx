@@ -5,24 +5,21 @@ import Link from "next/link";
 import { CalendarOff } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import {
-  computeDayAttendancePercent,
   computeSessionAttendancePercent,
   getTodayDateString,
   subscribeToAttendanceHistory,
   subscribeToAttendanceSummary,
 } from "@/lib/attendance";
-import { isDefaultHoliday, isSessionCancelled, subscribeToHoliday } from "@/lib/holidays";
+import { isDefaultHoliday, isSessionCancelled, subscribeToHoliday, subscribeToHolidaysForRange } from "@/lib/holidays";
 import { subscribeToClassSectionForTeacher } from "@/lib/classSections";
 import { DEMO_CLASS_ID } from "@/lib/navigation";
 import type { AttendanceSummary, ClassSection, Holiday } from "@/lib/types";
-
-function formatDate(dateStr: string) {
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
+import AttendanceMonthTable, {
+  buildMonthHistoryRows,
+  formatDate,
+  monthBounds,
+  MonthYearPicker,
+} from "@/components/attendance/AttendanceMonthTable";
 
 function SessionStatus({
   label,
@@ -58,21 +55,13 @@ function SessionStatus({
             <p className="text-[11px] uppercase tracking-wide text-gray-500">Absent</p>
           </div>
           <div>
-            <p className="text-lg font-bold text-gray-900">
-              {computeSessionAttendancePercent(summary)}%
-            </p>
+            <p className="text-lg font-bold text-gray-900">{computeSessionAttendancePercent(summary)}%</p>
             <p className="text-[11px] uppercase tracking-wide text-gray-500">Attendance</p>
           </div>
         </div>
       )}
     </div>
   );
-}
-
-interface DayRow {
-  date: string;
-  morning?: AttendanceSummary;
-  afternoon?: AttendanceSummary;
 }
 
 export default function ClassAttendancePage() {
@@ -85,6 +74,13 @@ export default function ClassAttendancePage() {
   const [afternoonSummary, setAfternoonSummary] = useState<AttendanceSummary | null | undefined>(undefined);
   const [holiday, setHoliday] = useState<Holiday | null | undefined>(undefined);
   const [history, setHistory] = useState<AttendanceSummary[] | null>(null);
+
+  const [historyMonth, setHistoryMonth] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
+  const [monthHolidays, setMonthHolidays] = useState<Holiday[] | null>(null);
+  const { start: monthStart, end: monthEnd } = monthBounds(historyMonth.year, historyMonth.month);
 
   useEffect(() => {
     if (!schoolId || !user) return;
@@ -108,26 +104,37 @@ export default function ClassAttendancePage() {
 
   useEffect(() => {
     if (!mySection) return;
-    return subscribeToAttendanceHistory(mySection.id, setHistory);
+    return subscribeToAttendanceHistory(mySection.schoolId, mySection.id, setHistory);
   }, [mySection]);
 
-  const dayRows = useMemo(() => {
-    const map = new Map<string, DayRow>();
-    for (const s of history ?? []) {
-      const row = map.get(s.date) ?? { date: s.date };
-      if (s.session === "MORNING") row.morning = s;
-      else row.afternoon = s;
-      map.set(s.date, row);
-    }
-    return [...map.values()].sort((a, b) => b.date.localeCompare(a.date));
-  }, [history]);
+  useEffect(() => {
+    if (!schoolId) return;
+    return subscribeToHolidaysForRange(schoolId, monthStart, monthEnd, setMonthHolidays);
+  }, [schoolId, monthStart, monthEnd]);
 
-  const pastDayRows = dayRows.filter((d) => d.date !== today);
+  // Excludes today (shown separately in the card above) as well as future days.
+  const historyRows = useMemo(
+    () =>
+      buildMonthHistoryRows({
+        year: historyMonth.year,
+        month: historyMonth.month,
+        excludeFrom: today,
+        history: history ?? [],
+        monthHolidays: monthHolidays ?? [],
+      }),
+    [historyMonth, today, history, monthHolidays]
+  );
+
+  const historyLoading = history === null || monthHolidays === null;
 
   const morningCancelled = isSessionCancelled(today, holiday, "MORNING");
   const afternoonCancelled = isSessionCancelled(today, holiday, "AFTERNOON");
-  const bothResolvedToday =
-    (Boolean(morningSummary) || morningCancelled) && (Boolean(afternoonSummary) || afternoonCancelled);
+  const bothCancelledToday = morningCancelled && afternoonCancelled;
+  // Submitted sessions are editable now (not locked), so the link into Take
+  // Attendance stays available even once both sessions have a summary — it
+  // only ever disappears when today is a full holiday and there's nothing
+  // to take or edit.
+  const alreadyTakenToday = Boolean(morningSummary) || Boolean(afternoonSummary);
   const holidayReason = holiday?.reason ?? (isDefaultHoliday(today) ? "Sunday" : undefined);
 
   if (mySection === undefined) {
@@ -162,12 +169,12 @@ export default function ClassAttendancePage() {
       <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-sm font-semibold text-gray-900">Today — {formatDate(today)}</p>
-          {!bothResolvedToday && (
+          {!bothCancelledToday && (
             <Link
               href={`/faculty/class/${DEMO_CLASS_ID}/attendance/take`}
               className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
             >
-              Take Attendance
+              {alreadyTakenToday ? "Edit Attendance" : "Take Attendance"}
             </Link>
           )}
         </div>
@@ -202,55 +209,33 @@ export default function ClassAttendancePage() {
       </div>
 
       <div className="mt-6">
-        <h2 className="text-sm font-semibold text-gray-900">History</h2>
-        <div className="mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          {history === null ? (
-            <p className="p-16 text-center text-sm text-gray-500">Loading…</p>
-          ) : pastDayRows.length === 0 ? (
-            <p className="p-16 text-center text-sm text-gray-500">
-              No past attendance records yet.
-            </p>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-gray-200 bg-gray-50 text-xs font-medium uppercase tracking-wide text-gray-500">
-                <tr>
-                  <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">Morning</th>
-                  <th className="px-4 py-3">Afternoon</th>
-                  <th className="px-4 py-3">Attendance %</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {pastDayRows.map((d) => (
-                  <tr key={d.date}>
-                    <td className="px-4 py-3 font-medium text-gray-900">{formatDate(d.date)}</td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {d.morning
-                        ? `${d.morning.presentCount} present, ${d.morning.absentCount} absent`
-                        : "Not taken"}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {d.afternoon
-                        ? `${d.afternoon.presentCount} present, ${d.afternoon.absentCount} absent`
-                        : "Not taken"}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {computeDayAttendancePercent(d.morning, d.afternoon)}%
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/faculty/class/${DEMO_CLASS_ID}/attendance/${d.date}`}
-                        className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
-                      >
-                        View
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-gray-900">History</h2>
+          <MonthYearPicker month={historyMonth.month} year={historyMonth.year} onChange={setHistoryMonth} />
+        </div>
+        <div className="mt-2">
+          <AttendanceMonthTable
+            rows={historyRows}
+            loading={historyLoading}
+            renderActions={(d) => (
+              <div className="flex gap-3">
+                {(d.morning || d.afternoon) && (
+                  <Link
+                    href={`/faculty/class/${DEMO_CLASS_ID}/attendance/${d.date}`}
+                    className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+                  >
+                    View
+                  </Link>
+                )}
+                <Link
+                  href={`/faculty/class/${DEMO_CLASS_ID}/attendance/take?date=${d.date}`}
+                  className="text-sm font-medium text-gray-600 hover:text-gray-900"
+                >
+                  {d.morning || d.afternoon ? "Edit" : "Take"}
+                </Link>
+              </div>
+            )}
+          />
         </div>
       </div>
     </div>
