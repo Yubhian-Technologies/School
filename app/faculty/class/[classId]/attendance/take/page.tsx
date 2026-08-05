@@ -443,6 +443,11 @@ export default function TakeAttendancePage() {
         <Modal
           title={`Submit ${SESSION_LABEL[selectedSession]}?`}
           onClose={() => (submitting ? null : setConfirmOpen(false))}
+          maxWidthClassName="max-w-md"
+          maxHeightClassName="max-h-[90vh]"
+          overlayPaddingClassName="px-4"
+          dialogDecorationClassName="rounded-2xl border border-gray-200 shadow-lg"
+          overlayPositionClassName="inset-0"
         >
           <div className="space-y-4">
             <p className="text-sm text-gray-600">

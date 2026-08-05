@@ -99,11 +99,9 @@ export const FACULTY_NAV: NavGroup[] = [
     items: [
       { label: "Students", href: `/faculty/class/${DEMO_CLASS_ID}/students`, icon: GraduationCap },
       { label: "Attendance", href: `/faculty/class/${DEMO_CLASS_ID}/attendance`, icon: CalendarCheck },
-      { label: "Assignments", href: `/faculty/class/${DEMO_CLASS_ID}/assignments`, icon: FileText },
       { label: "Achievements", href: `/faculty/class/${DEMO_CLASS_ID}/achievements`, icon: Award },
       { label: "Parent Requests", href: `/faculty/class/${DEMO_CLASS_ID}/parent-requests`, icon: MessageSquareText },
       { label: "Leaves", href: `/faculty/class/${DEMO_CLASS_ID}/leaves`, icon: CalendarClock },
-      { label: "Messages", href: `/faculty/class/${DEMO_CLASS_ID}/messages`, icon: MessageCircle },
       { label: "Announcements", href: `/faculty/class/${DEMO_CLASS_ID}/announcements`, icon: Megaphone },
     ],
   },
@@ -149,6 +147,7 @@ export const PARENT_NAV: NavGroup[] = [
     items: [
       { label: "Fees", href: "/parent/fees", icon: Wallet },
       { label: "Leaves", href: "/parent/leaves", icon: ClipboardList },
+      { label: "Requests", href: "/parent/requests", icon: MessageSquareText },
       { label: "Documents", href: "/parent/documents", icon: FileText },
     ],
   },

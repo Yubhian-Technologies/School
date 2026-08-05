@@ -500,7 +500,30 @@ service cloud.firestore {
     }
 
     // parentRequests/{id} and leaveRequests/{id} are handled by the
-    // isParentReviewedRequestCollection() bucket above.
+    // isParentReviewedRequestCollection() bucket above. That bucket's
+    // `{collection}/{id}` wildcard match does NOT reach into a subcollection
+    // path like parentRequests/{id}/replies/{replyId} — Firestore rules
+    // matches are path-exact, so the "Conversation Timeline" reply thread on
+    // a request's detail panel needs its own dedicated block, same shape as
+    // conversations/{id}/messages below. Unlike the parent doc itself (only
+    // Admin/Class Teacher can update it, e.g. to change status), the owning
+    // parent CAN post replies here even though they can't touch the parent
+    // doc directly.
+    match /parentRequests/{requestId}/replies/{replyId} {
+      function parentRequestDoc() {
+        return get(/databases/$(database)/documents/parentRequests/$(requestId));
+      }
+
+      allow read: if isAdminOfSchool(parentRequestDoc().data.schoolId) ||
+        isClassTeacherOf(parentRequestDoc().data.classSectionId) ||
+        request.auth.uid == parentRequestDoc().data.parentUid;
+
+      allow create: if (
+        isAdminOfSchool(parentRequestDoc().data.schoolId) ||
+        isClassTeacherOf(parentRequestDoc().data.classSectionId) ||
+        request.auth.uid == parentRequestDoc().data.parentUid
+      ) && request.resource.data.senderUid == request.auth.uid;
+    }
 
     // -----------------------------------------------------------------------
     // conversations/{id} + messages subcollection — Class Teacher <-> Parent only

@@ -127,7 +127,6 @@ export default function ClassStudentsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [searchError, setSearchError] = useState<string | null>(null);
   const [viewStudent, setViewStudent] = useState<Student | null>(null);
 
   useEffect(() => {
@@ -293,27 +292,15 @@ export default function ClassStudentsPage() {
     }
   }
 
-  function handleSearch(e: FormEvent) {
-    e.preventDefault();
-    setSearchError(null);
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) return;
-
-    const match = students?.find(
-      (s) =>
-        s.name.toLowerCase() === term ||
-        s.admissionNo.toLowerCase() === term ||
-        s.rollNo.toLowerCase() === term
-    );
-    if (match) {
-      setViewStudent(match);
-    } else {
-      setViewStudent(null);
-      setSearchError("No student found with that Name, Student ID, or Roll Number.");
-    }
-  }
-
   const sortedStudents = useMemo(() => students ?? [], [students]);
+
+  const filteredStudents = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return sortedStudents;
+    return sortedStudents.filter(
+      (s) => s.name.toLowerCase().includes(term) || s.rollNo.toLowerCase().includes(term)
+    );
+  }, [sortedStudents, searchTerm]);
 
   const parentEntries = viewStudent
     ? ([
@@ -358,21 +345,14 @@ export default function ClassStudentsPage() {
         </button>
       </div>
 
-      <form onSubmit={handleSearch} className="mt-4 flex gap-2">
+      <div className="mt-4">
         <input
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search by Name, Student ID, or Roll Number"
+          placeholder="Search by Name or Roll Number"
           className={`${inputClass} mt-0 max-w-sm`}
         />
-        <button
-          type="submit"
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
-        >
-          Search Student
-        </button>
-      </form>
-      {searchError && <p className="mt-2 text-sm text-red-600">{searchError}</p>}
+      </div>
 
       <div className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         {students === null ? (
@@ -385,19 +365,26 @@ export default function ClassStudentsPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-gray-200 bg-gray-50 text-xs font-medium uppercase tracking-wide text-gray-500">
               <tr>
-                <th className="px-4 py-3">Student ID</th>
-                <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Roll No</th>
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Admission ID</th>
                 <th className="px-4 py-3">Parent Mobile</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {sortedStudents.map((s) => (
+              {filteredStudents.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-16 text-center text-sm text-gray-500">
+                    No students found
+                  </td>
+                </tr>
+              ) : (
+              filteredStudents.map((s) => (
                 <tr key={s.id}>
-                  <td className="px-4 py-3 font-medium text-gray-900">{s.admissionNo}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900">{s.rollNo}</td>
                   <td className="px-4 py-3 text-gray-600">{s.name}</td>
-                  <td className="px-4 py-3 text-gray-600">{s.rollNo}</td>
+                  <td className="px-4 py-3 text-gray-600">{s.admissionNo}</td>
                   <td className="px-4 py-3 text-gray-600">
                     {s.father?.mobile || s.mother?.mobile || s.guardian?.mobile || "—"}
                   </td>
@@ -425,7 +412,8 @@ export default function ClassStudentsPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         )}
@@ -435,7 +423,11 @@ export default function ClassStudentsPage() {
         <Modal
           title={isEditing ? "Edit Student" : "Add Student"}
           onClose={closeModal}
-          maxWidthClassName="max-w-2xl"
+          maxWidthClassName="max-w-none"
+          maxHeightClassName="h-full max-h-full"
+          overlayPaddingClassName="p-0"
+          dialogDecorationClassName=""
+          overlayPositionClassName="inset-y-0 left-64 right-0"
         >
           <form onSubmit={handleSubmit} className="space-y-6">
               <div>
@@ -493,7 +485,7 @@ export default function ClassStudentsPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="student-id" className={labelClass}>
-                    Student ID
+                    Admission ID
                   </label>
                   <input
                     id="student-id"
@@ -772,7 +764,15 @@ export default function ClassStudentsPage() {
       )}
 
       {viewStudent && (
-        <Modal title="Student Profile" onClose={() => setViewStudent(null)} maxWidthClassName="max-w-lg">
+        <Modal
+          title="Student Profile"
+          onClose={() => setViewStudent(null)}
+          maxWidthClassName="max-w-none"
+          maxHeightClassName="h-full max-h-full"
+          overlayPaddingClassName="p-0"
+          dialogDecorationClassName=""
+          overlayPositionClassName="inset-y-0 left-64 right-0"
+        >
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               {viewStudent.photoUrl ? (

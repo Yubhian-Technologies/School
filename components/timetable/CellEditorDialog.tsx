@@ -61,7 +61,7 @@ export default function CellEditorDialog({
   const hasContent = Boolean(cell?.subject || cell?.facultyId || cell?.room || cell?.notes);
 
   return (
-    <Modal title={title} onClose={onClose} maxWidthClassName="max-w-md">
+    <Modal title={title} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="cell-subject" className={labelClass}>
