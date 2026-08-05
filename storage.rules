@@ -49,8 +49,9 @@ service firebase.storage {
     // nothing else needs to change, and this file (a separate Firebase
     // Console publish step from firestore.rules) doesn't need touching
     // again for that new feature. Only a genuinely new access pattern
-    // (parent-authored, per-student scoped, etc. — like students/{id} and
-    // faculty/{uid} below) needs its own dedicated match block.
+    // (parent-authored, per-student scoped, etc. — like students/{id},
+    // faculty/{uid}, and parentRequests/{..} below) needs its own dedicated
+    // match block.
     // ---------------------------------------------------------------------
 
     function isAdminAuthoredCategory(category) {
@@ -101,45 +102,19 @@ service firebase.storage {
         (isAdminOfSchool(schoolId) || isFacultyOfSchool(schoolId));
     }
 
-    // Circulars (image/PDF) and timetable Excel uploads — admin authored, school-wide read
-    match /schools/{schoolId}/circulars/{allPaths=**} {
-      allow read: if isSuperAdmin() || inSameSchool(schoolId);
-      allow write: if isReasonableUpload() && isAdminOfSchool(schoolId);
-    }
-
-    match /schools/{schoolId}/timetables/{allPaths=**} {
-      allow read: if isSuperAdmin() || inSameSchool(schoolId);
-      allow write: if isReasonableUpload() && isAdminOfSchool(schoolId);
-    }
-
-    // Assignment/achievement attachments — faculty-authored, school-wide read within tenant
-    match /schools/{schoolId}/assignments/{allPaths=**} {
-      allow read: if isSuperAdmin() || inSameSchool(schoolId);
-      allow write: if isReasonableUpload() && (isAdminOfSchool(schoolId) || myProfile().role == 'faculty');
-    }
-
-    match /schools/{schoolId}/achievements/{allPaths=**} {
-      allow read: if isSuperAdmin() || inSameSchool(schoolId);
-      allow write: if isReasonableUpload() && (isAdminOfSchool(schoolId) || myProfile().role == 'faculty');
-    }
-
     // Parent Request attachments (e.g. a medical certificate on a leave
     // request) — either side of the conversation may attach a file, same
     // school-wide-read pattern as assignments/achievements above (not
     // per-doc-owner scoped, matching those two precedents rather than the
-    // heavier isGuardianOfStudent check students/{..} uses).
+    // heavier isGuardianOfStudent check students/{..} uses). Doesn't fit
+    // either bucket above since a parent (not just admin/faculty) may write
+    // here too, so it stays its own dedicated block.
     match /schools/{schoolId}/parentRequests/{allPaths=**} {
       allow read: if isSuperAdmin() || inSameSchool(schoolId);
       allow write: if isReasonableUpload() && (
         isAdminOfSchool(schoolId) || isFacultyOfSchool(schoolId) ||
         (isSignedIn() && myProfile().role == 'parent' && myProfile().schoolId == schoolId)
       );
-    }
-
-    // Event photos — admin authored, school-wide read.
-    match /schools/{schoolId}/events/{allPaths=**} {
-      allow read: if isSuperAdmin() || inSameSchool(schoolId);
-      allow write: if isReasonableUpload() && isAdminOfSchool(schoolId);
     }
 
     // Deny everything else by default.
