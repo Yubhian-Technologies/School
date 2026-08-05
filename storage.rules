@@ -39,6 +39,28 @@ service firebase.storage {
       return request.resource.size < 20 * 1024 * 1024;
     }
 
+    // ---------------------------------------------------------------------
+    // EXTENDING THIS FILE — mirrors firestore.rules' bucket-registry
+    // pattern. Most new upload categories are one of two shapes:
+    //   - admin-authored, school-wide read (circulars, timetables, events...)
+    //   - admin/faculty-authored, school-wide read (assignments,
+    //     achievements...)
+    // For either shape, add the folder name to the matching list below —
+    // nothing else needs to change, and this file (a separate Firebase
+    // Console publish step from firestore.rules) doesn't need touching
+    // again for that new feature. Only a genuinely new access pattern
+    // (parent-authored, per-student scoped, etc. — like students/{id} and
+    // faculty/{uid} below) needs its own dedicated match block.
+    // ---------------------------------------------------------------------
+
+    function isAdminAuthoredCategory(category) {
+      return category in ['circulars', 'timetables', 'events'];
+    }
+
+    function isStaffAuthoredCategory(category) {
+      return category in ['assignments', 'achievements'];
+    }
+
     // Student photos + documents (Aadhaar, birth cert, medical cert, etc.).
     // Faculty write access is needed so a Class Teacher can add/edit a
     // student's photo and digital ID (firestore.rules already trusts any
@@ -58,32 +80,25 @@ service firebase.storage {
       allow write: if isReasonableUpload() && (isAdminOfSchool(schoolId) || request.auth.uid == uid);
     }
 
-    // Circulars (image/PDF) and timetable Excel uploads — admin authored, school-wide read
-    match /schools/{schoolId}/circulars/{allPaths=**} {
-      allow read: if isSuperAdmin() || inSameSchool(schoolId);
-      allow write: if isReasonableUpload() && isAdminOfSchool(schoolId);
+    // Bucket: admin-authored categories (circulars, timetable Excel
+    // uploads, event photos) — admin-of-school write, school-wide read. New
+    // members: add the folder name to isAdminAuthoredCategory() above.
+    match /schools/{schoolId}/{category}/{allPaths=**} {
+      allow read: if isAdminAuthoredCategory(category) && (isSuperAdmin() || inSameSchool(schoolId));
+      allow write: if isAdminAuthoredCategory(category) && isReasonableUpload() && isAdminOfSchool(schoolId);
     }
 
-    match /schools/{schoolId}/timetables/{allPaths=**} {
-      allow read: if isSuperAdmin() || inSameSchool(schoolId);
-      allow write: if isReasonableUpload() && isAdminOfSchool(schoolId);
-    }
-
-    // Assignment/achievement attachments — faculty-authored, school-wide read within tenant
-    match /schools/{schoolId}/assignments/{allPaths=**} {
-      allow read: if isSuperAdmin() || inSameSchool(schoolId);
-      allow write: if isReasonableUpload() && (isAdminOfSchool(schoolId) || myProfile().role == 'faculty');
-    }
-
-    match /schools/{schoolId}/achievements/{allPaths=**} {
-      allow read: if isSuperAdmin() || inSameSchool(schoolId);
-      allow write: if isReasonableUpload() && (isAdminOfSchool(schoolId) || myProfile().role == 'faculty');
-    }
-
-    // Event photos — admin authored, school-wide read.
-    match /schools/{schoolId}/events/{allPaths=**} {
-      allow read: if isSuperAdmin() || inSameSchool(schoolId);
-      allow write: if isReasonableUpload() && isAdminOfSchool(schoolId);
+    // Bucket: admin/faculty-authored categories (assignment and achievement
+    // attachments) — admin-or-faculty-of-school write, school-wide read.
+    // New members: add the folder name to isStaffAuthoredCategory() above.
+    // Faculty check is scoped by schoolId (isFacultyOfSchool), not just
+    // role — a bare myProfile().role == 'faculty' check here previously let
+    // any faculty account write into ANY school's assignments/achievements
+    // folder, not just their own.
+    match /schools/{schoolId}/{category}/{allPaths=**} {
+      allow read: if isStaffAuthoredCategory(category) && (isSuperAdmin() || inSameSchool(schoolId));
+      allow write: if isStaffAuthoredCategory(category) && isReasonableUpload() &&
+        (isAdminOfSchool(schoolId) || isFacultyOfSchool(schoolId));
     }
 
     // Deny everything else by default.
