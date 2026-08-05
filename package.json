@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "seed:users": "node scripts/seedUsers.mjs"
+    "seed:users": "node scripts/seedUsers.mjs",
+    "find:orphaned-auth": "node --env-file=.env.local scripts/findOrphanedAuthAccounts.mjs"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
@@ -27,5 +28,8 @@
     "eslint-config-next": "16.2.11",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "jose": "4.15.9"
   }
 }
