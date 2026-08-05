@@ -59,6 +59,7 @@ export const ADMIN_NAV: NavGroup[] = [
     label: "Academics",
     items: [
       { label: "Classes", href: "/admin/classes", icon: Layers },
+      { label: "Attendance", href: "/admin/attendance", icon: CalendarCheck },
       { label: "Subjects", href: "/admin/subjects", icon: Library },
       { label: "Faculty", href: "/admin/faculty", icon: Users },
       { label: "Timetable", href: "/admin/timetable", icon: CalendarClock },
