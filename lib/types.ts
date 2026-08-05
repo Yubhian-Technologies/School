@@ -407,6 +407,14 @@ export interface Assignment {
   updatedAt: number | null;
 }
 
+// Soft-deleted (never removed from Firestore) so historical stats — Total
+// Achievements / Achievements This Term on the Class Teacher dashboard — can
+// keep counting a record after it's "deleted" from the active list. Active
+// views (the Achievements table, Section Highlights, the Parent dashboard)
+// all filter on isDeleted == false; only the two historical cards read the
+// full, unfiltered set. academicYear/term are stamped at creation time
+// (lib/achievements.ts's getCurrentTerm/getCurrentAcademicYear) so a record's
+// historical bucket never shifts retroactively as the calendar moves on.
 export interface Achievement {
   id: string;
   schoolId: string;
@@ -420,6 +428,12 @@ export interface Achievement {
   photoUrl?: string;
   certificateUrl?: string;
   createdByUid: string;
+  academicYear: string;
+  term: string;
+  isDeleted: boolean;
+  deletedAt: number | null;
+  createdAt: number | null;
+  updatedAt: number | null;
 }
 
 // "Assessments" — Subject Teacher conducted quizzes/competitions (Faculty
@@ -471,18 +485,68 @@ export interface AcademicRecord {
 
 export type RequestStatus = "pending" | "approved" | "rejected";
 
+// ParentRequest — a general help-desk ticket a parent raises against their
+// child's Class Teacher (Leave/Academic/Attendance/Fee/Transport/Meeting/
+// Other), reviewed and responded to via a per-request reply thread. Distinct
+// from LeaveRequest below (a separate, purpose-built module/collection —
+// this "LEAVE" type value is just a category label here, not wired to it).
+// Uses its own status enum (not RequestStatus above, which LeaveRequest
+// still owns) since the review workflow here is Pending -> In Progress ->
+// Resolved, not an approve/reject decision.
+export type ParentRequestType =
+  | "LEAVE"
+  | "ACADEMIC"
+  | "ATTENDANCE"
+  | "FEE"
+  | "TRANSPORT"
+  | "MEETING"
+  | "OTHER";
+
+export type ParentRequestStatus = "pending" | "in_progress" | "resolved";
+
+export interface ParentRequestAttachment {
+  name: string;
+  url: string;
+  size: number;
+}
+
 export interface ParentRequest {
   id: string;
   schoolId: string;
-  studentId: string;
   classSectionId: string;
+  studentId: string;
+  studentName: string;
+  admissionNo: string;
+  rollNo: string;
+  className: string;
+  sectionName: string;
   parentUid: string;
-  type: "ADDRESS" | "MOBILE" | "GUARDIAN_INFO" | "MEDICAL_INFO" | "PHOTO";
-  payload: Record<string, unknown>;
-  status: RequestStatus;
-  remark?: string;
+  parentName: string;
+  parentRelation: string;
+  parentPhone?: string;
+  parentEmail?: string;
+  type: ParentRequestType;
+  subject: string;
+  description: string;
+  status: ParentRequestStatus;
+  attachments?: ParentRequestAttachment[];
   reviewedByUid?: string;
   createdAt: number | null;
+  updatedAt: number | null;
+}
+
+// parentRequests/{id}/replies/{replyId} — the "Conversation Timeline" on a
+// request's detail panel. The request's own `description` above renders as
+// the first bubble (not duplicated into a reply doc); every reply after that
+// (parent or faculty) lives here, plus an auto-posted "system" entry each
+// time the Class Teacher changes `status`.
+export interface ParentRequestReply {
+  id: string;
+  senderUid: string;
+  senderName: string;
+  senderRole: "parent" | "faculty" | "system";
+  text: string;
+  sentAt: number | null;
 }
 
 export interface LeaveRequest {

@@ -367,7 +367,6 @@ export default function AdminFacultyPage() {
         <Modal
           title={isEditing ? "Edit Faculty" : "Add Faculty"}
           onClose={closeModal}
-          maxWidthClassName="max-w-2xl"
         >
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -667,7 +666,6 @@ export default function AdminFacultyPage() {
         <Modal
           title="Faculty Profile"
           onClose={() => setViewFaculty(null)}
-          maxWidthClassName="max-w-lg"
         >
           <div className="space-y-4">
             <div className="flex items-center gap-4">

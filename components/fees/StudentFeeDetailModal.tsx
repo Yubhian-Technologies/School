@@ -211,7 +211,7 @@ export default function StudentFeeDetailModal({
   }, [student.id]);
 
   return (
-    <Modal title={`${student.name} — Fee Details`} onClose={onClose} maxWidthClassName="max-w-lg">
+    <Modal title={`${student.name} — Fee Details`} onClose={onClose}>
       <div className="space-y-4">
         <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
           <span>
